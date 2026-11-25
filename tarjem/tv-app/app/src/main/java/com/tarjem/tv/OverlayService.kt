@@ -30,6 +30,8 @@ object TvState
 	@Volatile var lastCaption: String? = null
 	@Volatile var lastCaptionAt = 0L
 	@Volatile var lastError: String? = null
+	/** Android ignores taps on its install prompt while another app draws over the screen. */
+	@Volatile var overlayPausedUntil = 0L
 }
 
 class OverlayService : Service()
@@ -39,6 +41,7 @@ class OverlayService : Service()
 		private const val TAG = "TarjemOverlay"
 		private const val CHANNEL = "tarjem"
 		const val ACTION_TEST = "com.tarjem.tv.TEST"
+		const val ACTION_HIDE = "com.tarjem.tv.HIDE"
 		private const val TEST_TEXT = "هذي تجربة للترجمة العربية ✓ إذا تشوفها فوق اللعبة، كل شي تمام"
 
 		fun start(context: Context, action: String? = null)
@@ -100,6 +103,11 @@ class OverlayService : Service()
 
 	override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int
 	{
+		if(intent?.action == ACTION_HIDE)
+		{
+			detachOverlay()
+			return START_STICKY
+		}
 		if(!TvState.overlayAttached)
 			attachOverlay()
 		TvState.port = server.port
@@ -136,6 +144,8 @@ class OverlayService : Service()
 
 	private fun attachOverlay()
 	{
+		if(System.currentTimeMillis() < TvState.overlayPausedUntil)
+			return
 		if(layer != null || !canDraw(this))
 		{
 			TvState.overlayAttached = layer != null
