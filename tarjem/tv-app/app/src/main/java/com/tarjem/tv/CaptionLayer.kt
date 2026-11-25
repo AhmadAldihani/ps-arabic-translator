@@ -170,7 +170,11 @@ class CaptionLayer(context: Context) : FrameLayout(context)
 		tv.setTextColor(style.fg)
 		tv.setTextSize(TypedValue.COMPLEX_UNIT_PX, textPx)
 		tv.typeface = Fonts.get(context, style.font, style.bold)
-		tv.setLineSpacing(0f, style.lineSpacing)
+		// Arabic fonts like Cairo have very tall built-in line gaps; use an exact, compact line height.
+		if(android.os.Build.VERSION.SDK_INT >= 28)
+			tv.lineHeight = (textPx * 1.25f * style.lineSpacing / 1.12f).roundToInt()
+		else
+			tv.setLineSpacing(0f, style.lineSpacing)
 		val alpha = (style.bgAlpha * 255).roundToInt().coerceIn(0, 255)
 		tv.background = GradientDrawable().apply {
 			cornerRadius = style.radius * s
