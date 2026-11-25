@@ -1,4 +1,4 @@
-// Tarjem TV — status and setup screen (works with the TV remote).
+// Tarjemni TV — status and setup screen (works with the TV remote).
 
 package com.tarjem.tv
 
@@ -8,7 +8,6 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.graphics.Color
-import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Bundle
@@ -18,6 +17,7 @@ import android.provider.Settings
 import android.view.Gravity
 import android.view.View
 import android.widget.Button
+import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
@@ -25,10 +25,13 @@ import android.widget.TextView
 class MainActivity : Activity()
 {
 	private val handler = Handler(Looper.getMainLooper())
-	private lateinit var status: TextView
 	private lateinit var address: TextView
+	private lateinit var rows: LinearLayout
 	private lateinit var grantButton: Button
+	private lateinit var updateCard: LinearLayout
+	private lateinit var updateText: TextView
 	private lateinit var help: TextView
+	private var askedInstall = false
 	private val ticker = object : Runnable
 	{
 		override fun run()
@@ -38,44 +41,71 @@ class MainActivity : Activity()
 		}
 	}
 
+	private val pink = Color.rgb(255, 79, 160)
+	private val violet = Color.rgb(123, 92, 255)
+	private val muted = Color.rgb(150, 158, 180)
+
 	override fun onCreate(savedInstanceState: Bundle?)
 	{
 		super.onCreate(savedInstanceState)
-		val pad = dp(28)
+		val pad = dp(36)
 		val root = LinearLayout(this).apply {
 			orientation = LinearLayout.VERTICAL
 			layoutDirection = View.LAYOUT_DIRECTION_RTL
-			setBackgroundColor(Color.rgb(16, 22, 38))
 			setPadding(pad * 2, pad, pad * 2, pad)
 		}
-		root.addView(text("ترجم TV", 34f, Color.rgb(245, 184, 65), bold = true))
-		root.addView(text("يعرض الترجمة العربية فوق شاشة البلايستيشن. الترجمة نفسها تجي من برنامج «ترجم» على اللابتوب.", 17f, Color.rgb(190, 200, 220)))
 
-		address = text("", 26f, Color.WHITE, bold = true).apply { setPadding(0, dp(18), 0, dp(6)) }
-		root.addView(address)
-		status = text("", 19f, Color.rgb(220, 230, 245))
-		root.addView(status)
+		// header
+		val header = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+		header.addView(TextView(this).apply {
+			text = "ت"
+			textSize = 30f
+			gravity = Gravity.CENTER
+			setTextColor(Color.WHITE)
+			typeface = Fonts.get(context, "cairo", true)
+			background = GradientDrawable(GradientDrawable.Orientation.TL_BR, intArrayOf(pink, violet)).apply { cornerRadius = dp(18).toFloat() }
+		}, LinearLayout.LayoutParams(dp(64), dp(64)))
+		val titles = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(18), 0, dp(18), 0) }
+		titles.addView(text("ترجمني", 34f, Color.WHITE, bold = true, font = "cairo"))
+		titles.addView(text("ترجمة عربية فوق ألعاب بلايستيشن · الإصدار ${Updater.current(this)}", 15f, muted))
+		header.addView(titles)
+		root.addView(header)
 
-		val buttons = LinearLayout(this).apply {
-			orientation = LinearLayout.HORIZONTAL
-			layoutDirection = View.LAYOUT_DIRECTION_RTL
-			setPadding(0, dp(18), 0, dp(12))
-		}
-		grantButton = button("منح إذن العرض فوق الشاشة") { openOverlaySettings() }
+		// update banner
+		updateCard = card(Color.argb(60, 123, 92, 255)).apply { visibility = View.GONE }
+		updateText = text("", 18f, Color.WHITE, bold = true)
+		updateCard.addView(updateText)
+		updateCard.addView(button("تثبيت التحديث الآن", primary = true) { askedInstall = true; Updater.install(this) })
+		root.addView(updateCard, spaced())
+
+		// address card
+		val addrCard = card(Color.argb(160, 22, 26, 40))
+		addrCard.addView(text("عنوان التلفزيون (اكتبه في برنامج اللابتوب إذا ما لقاه)", 15f, muted))
+		address = text("", 30f, Color.WHITE, bold = true).apply { textDirection = View.TEXT_DIRECTION_LTR; gravity = Gravity.END }
+		addrCard.addView(address)
+		root.addView(addrCard, spaced())
+
+		// status rows
+		rows = card(Color.argb(160, 22, 26, 40))
+		root.addView(rows, spaced())
+
+		// buttons
+		val buttons = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, dp(16), 0, dp(8)) }
+		grantButton = button("منح إذن العرض فوق الشاشة", primary = true) { openOverlaySettings() }
 		buttons.addView(grantButton)
-		buttons.addView(button("تجربة الترجمة على الشاشة") {
-			OverlayService.start(this, OverlayService.ACTION_TEST)
-		})
-		buttons.addView(button("إعادة تشغيل الخدمة") {
-			stopService(Intent(this, OverlayService::class.java))
-			handler.postDelayed({ OverlayService.start(this) }, 600)
-		})
+		buttons.addView(button("تجربة الترجمة على الشاشة", primary = false) { OverlayService.start(this, OverlayService.ACTION_TEST) })
+		buttons.addView(button("البحث عن تحديث", primary = false) { Updater.checkAsync(this, force = true) })
 		root.addView(buttons)
 
-		help = text("", 16f, Color.rgb(170, 180, 200))
-		root.addView(help)
+		help = text("", 15f, muted)
+		root.addView(help, spaced())
 
-		setContentView(ScrollView(this).apply { addView(root) })
+		val bg = FrameLayout(this).apply {
+			background = GradientDrawable(GradientDrawable.Orientation.TL_BR,
+				intArrayOf(Color.rgb(32, 18, 52), Color.rgb(9, 11, 20), Color.rgb(8, 10, 18)))
+		}
+		bg.addView(ScrollView(this).apply { addView(root) })
+		setContentView(bg)
 		grantButton.requestFocus()
 	}
 
@@ -83,6 +113,7 @@ class MainActivity : Activity()
 	{
 		super.onResume()
 		OverlayService.start(this)
+		Updater.checkAsync(this)
 		handler.post(ticker)
 	}
 
@@ -96,30 +127,36 @@ class MainActivity : Activity()
 	{
 		val canDraw = OverlayService.canDraw(this)
 		if(canDraw && !TvState.overlayAttached && TvState.serviceRunning)
-			OverlayService.start(this) // permission was just granted: attach the window now
+			OverlayService.start(this)
 		val ips = NetInfo.localAddresses()
-		address.text = if(ips.isEmpty()) "التلفزيون مو متصل بالشبكة"
-			else "عنوان التلفزيون: " + ips.joinToString("  أو  ")
+		address.text = if(ips.isEmpty()) "غير متصل بالشبكة" else ips.joinToString("   ")
 
 		val clients = TvState.clients
-		status.text = buildString {
-			append(if(canDraw) "✅ إذن العرض فوق الشاشة: مفعّل" else "❌ إذن العرض فوق الشاشة: غير مفعّل (اضغط الزر تحت)")
-			append('\n')
-			append(if(TvState.serviceRunning) "✅ الخدمة شغّالة (المنفذ ${TvState.port})" else "⏳ الخدمة ما اشتغلت للحين")
-			append('\n')
-			append(if(clients.isEmpty()) "⏳ ينتظر اتصال برنامج «ترجم» من اللابتوب"
-				else "✅ متصل باللابتوب: " + clients.joinToString("، "))
-			val last = TvState.lastCaption
-			if(last != null && System.currentTimeMillis() - TvState.lastCaptionAt < 60_000)
-				append("\n\nآخر ترجمة: ").append(last.replace('\n', ' ').take(80))
-			TvState.lastError?.let { append("\n\n⚠️ ").append(it) }
-		}
+		rows.removeAllViews()
+		rows.addView(status(canDraw, if(canDraw) "إذن العرض فوق الشاشة مفعّل" else "إذن العرض فوق الشاشة غير مفعّل — اضغط الزر تحت"))
+		rows.addView(status(TvState.serviceRunning, if(TvState.serviceRunning) "الخدمة شغّالة في الخلفية" else "الخدمة ما اشتغلت للحين"))
+		rows.addView(status(clients.isNotEmpty(), if(clients.isEmpty()) "ينتظر برنامج «ترجمني» من اللابتوب" else "متصل باللابتوب: " + clients.joinToString("، ")))
+		val last = TvState.lastCaption
+		if(last != null && System.currentTimeMillis() - TvState.lastCaptionAt < 60_000)
+			rows.addView(text("آخر ترجمة: " + last.take(90), 15f, muted))
+		TvState.lastError?.let { rows.addView(text("⚠ $it", 14f, Color.rgb(255, 120, 130))) }
 		grantButton.visibility = if(canDraw) View.GONE else View.VISIBLE
 
+		when(Updater.status)
+		{
+			"downloading" -> { updateCard.visibility = View.VISIBLE; updateText.text = "⬇ جاري تنزيل التحديث ${Updater.latest}…" }
+			"ready" -> {
+				updateCard.visibility = View.VISIBLE
+				updateText.text = "✨ تحديث جديد جاهز (الإصدار ${Updater.latest}). اضغط «تحديث» في الرسالة اللي تطلع."
+				if(!askedInstall) { askedInstall = true; Updater.install(this) }
+			}
+			else -> updateCard.visibility = View.GONE
+		}
+
 		help.text = if(canDraw)
-			"الخطوات: ١) شغّل برنامج «ترجم» على اللابتوب واضغط «البحث عن التلفزيون».  ٢) حوّل التلفزيون لمدخل HDMI حق البلايستيشن.  ٣) العب عادي، والترجمة بتطلع فوق اللعبة.\n\nالبرنامج يكمل شغّال في الخلفية، ما تحتاج تخليه مفتوح."
+			"الخطوات: ١) شغّل «ترجمني» على اللابتوب واضغط «ابحث عن التلفزيون».  ٢) حوّل التلفزيون لمدخل HDMI حق البلايستيشن.  ٣) العب عادي، والترجمة تطلع فوق اللعبة.\nالبرنامج يشتغل في الخلفية ويتحدّث لحاله."
 		else
-			"إذا ما فتحت صفحة الإذن أو ما لقيت البرنامج فيها: بعض التلفزيونات تخفي هذا الإذن. برنامج «ترجم» على اللابتوب يقدر يفعّله لك من زر «تفعيل الإذن على التلفزيون»، أو بهذا الأمر:\nadb shell appops set com.tarjem.tv SYSTEM_ALERT_WINDOW allow"
+			"إذا ما لقيت الإذن في التلفزيون: برنامج اللابتوب يقدر يفعّله من «التلفزيون متصل بس ما يعرض شي»، أو بالأمر:\nadb shell appops set com.tarjem.tv SYSTEM_ALERT_WINDOW allow"
 	}
 
 	private fun openOverlaySettings()
@@ -140,37 +177,65 @@ class MainActivity : Activity()
 			catch(_: ActivityNotFoundException) { }
 			catch(_: SecurityException) { }
 		}
-		help.text = "هذا التلفزيون ما فيه صفحة للإذن. استخدم زر «تفعيل الإذن على التلفزيون» في برنامج اللابتوب."
+		help.text = "هذا التلفزيون ما فيه صفحة للإذن. استخدم «تفعيل الإذن على التلفزيون» في برنامج اللابتوب."
 	}
 
-	private fun text(s: String, size: Float, color: Int, bold: Boolean = false) = TextView(this).apply {
+	// ---- small UI helpers --------------------------------------------------------
+
+	private fun text(s: String, size: Float, color: Int, bold: Boolean = false, font: String = "plex") = TextView(this).apply {
 		text = s
 		textSize = size
 		setTextColor(color)
 		textDirection = View.TEXT_DIRECTION_ANY_RTL
 		gravity = Gravity.START
-		if(bold) typeface = Typeface.DEFAULT_BOLD
-		setLineSpacing(0f, 1.2f)
+		typeface = Fonts.get(context, font, bold)
+		setLineSpacing(0f, 1.25f)
 	}
 
-	private fun button(label: String, onClick: () -> Unit) = Button(this).apply {
+	private fun status(ok: Boolean, label: String) = LinearLayout(this).apply {
+		orientation = LinearLayout.HORIZONTAL
+		gravity = Gravity.CENTER_VERTICAL
+		setPadding(0, dp(6), 0, dp(6))
+		addView(View(context).apply {
+			background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(if(ok) Color.rgb(47, 212, 138) else Color.rgb(255, 181, 71)) }
+		}, LinearLayout.LayoutParams(dp(12), dp(12)).apply { marginEnd = dp(12) })
+		addView(text(label, 19f, Color.WHITE))
+	}
+
+	private fun card(color: Int) = LinearLayout(this).apply {
+		orientation = LinearLayout.VERTICAL
+		setPadding(dp(24), dp(18), dp(24), dp(18))
+		background = GradientDrawable().apply {
+			cornerRadius = dp(20).toFloat()
+			setColor(color)
+			setStroke(dp(1), Color.argb(30, 255, 255, 255))
+		}
+	}
+
+	private fun spaced() = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+		topMargin = dp(16)
+	}
+
+	private fun button(label: String, primary: Boolean, onClick: () -> Unit) = Button(this).apply {
 		text = label
 		textSize = 18f
 		isAllCaps = false
+		typeface = Fonts.get(context, "plex", true)
 		setTextColor(Color.WHITE)
 		isFocusable = true
-		background = GradientDrawable().apply {
-			cornerRadius = dp(10).toFloat()
-			setColor(Color.rgb(40, 60, 110))
-			setStroke(dp(2), Color.rgb(245, 184, 65))
-		}
-		setPadding(dp(20), dp(10), dp(20), dp(10))
+		val normal = if(primary) GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, intArrayOf(pink, violet))
+			else GradientDrawable().apply { setColor(Color.argb(40, 255, 255, 255)) }
+		normal.cornerRadius = dp(14).toFloat()
+		background = normal
+		setPadding(dp(24), dp(12), dp(24), dp(12))
 		setOnFocusChangeListener { v, has ->
-			(v.background as GradientDrawable).setColor(if(has) Color.rgb(70, 100, 170) else Color.rgb(40, 60, 110))
+			(v.background as GradientDrawable).setStroke(if(has) dp(3) else 0, Color.WHITE)
+			v.scaleX = if(has) 1.05f else 1f
+			v.scaleY = if(has) 1.05f else 1f
 		}
 		setOnClickListener { onClick() }
 		layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-			marginEnd = dp(14)
+			marginEnd = dp(16)
 		}
 	}
 

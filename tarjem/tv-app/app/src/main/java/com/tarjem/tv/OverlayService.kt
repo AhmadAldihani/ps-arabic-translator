@@ -39,7 +39,7 @@ class OverlayService : Service()
 		private const val TAG = "TarjemOverlay"
 		private const val CHANNEL = "tarjem"
 		const val ACTION_TEST = "com.tarjem.tv.TEST"
-		private const val TEST_TEXT = "هذي تجربة للترجمة العربية ✓\nإذا تشوف هالمربع فوق اللعبة، كل شي تمام"
+		private const val TEST_TEXT = "هذي تجربة للترجمة العربية ✓ إذا تشوفها فوق اللعبة، كل شي تمام"
 
 		fun start(context: Context, action: String? = null)
 		{
@@ -90,11 +90,12 @@ class OverlayService : Service()
 				"name" to (Settings.Global.getString(contentResolver, "device_name") ?: Build.MODEL),
 				"port" to server.port,
 				"overlay" to TvState.overlayAttached,
-				"version" to 1))
+				"version" to Updater.current(this)))
 		}
 		server.start()
 		TvState.serviceRunning = true
 		attachOverlay()
+		Updater.checkAsync(this)
 	}
 
 	override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int
@@ -193,7 +194,7 @@ class OverlayService : Service()
 				client.send(Protocol.reply("welcome", mapOf(
 					"name" to (Settings.Global.getString(contentResolver, "device_name") ?: Build.MODEL),
 					"overlay" to TvState.overlayAttached,
-					"w" to dm.widthPixels, "h" to dm.heightPixels, "version" to 1)))
+					"w" to dm.widthPixels, "h" to dm.heightPixels, "version" to Updater.current(this))))
 			}
 			is Msg.Show -> showItems(msg.items, msg.ttlMs)
 			is Msg.Keep -> {
@@ -211,12 +212,23 @@ class OverlayService : Service()
 			}
 			Msg.Ping -> client.send(Protocol.reply("pong", mapOf("overlay" to TvState.overlayAttached)))
 			Msg.Test -> showTest()
+			Msg.Update -> {
+				// Asked from the laptop: get the newest version and bring up Android's install prompt.
+				Updater.checkAsync(this, force = true) { main.post { startInstall() } }
+				if(Updater.status == "ready") startInstall()
+			}
 		}
 	}
 
 	private fun showTest() = showItems(listOf(
-		CapItem(listOf(CapLine("جيسون", "توقفي يا لوسيا!")), NRect(0.3f, 0.70f, 0.4f, 0.05f)),
-		CapItem(listOf(CapLine(null, TEST_TEXT)), NRect(0.25f, 0.80f, 0.5f, 0.09f))), 6000)
+		CapItem(listOf(CapLine("جيسون", "توقفي يا لوسيا!")), NRect(0.3f, 0.72f, 0.4f, 0.045f), 0.04f),
+		CapItem(listOf(CapLine("لوسيا", "ما راح أوقف، لازم نخلص الحين."), CapLine(null, TEST_TEXT)), NRect(0.22f, 0.80f, 0.56f, 0.09f), 0.04f)), 7000)
+
+	private fun startInstall()
+	{
+		if(!Updater.install(this))
+			showItems(listOf(CapItem(listOf(CapLine(null, "فعّل «تثبيت تطبيقات غير معروفة» لترجمني، وارجع اضغط تحديث")), null)), 8000)
+	}
 
 	private fun showItems(items: List<CapItem>, ttl: Long)
 	{

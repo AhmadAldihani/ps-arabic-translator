@@ -75,3 +75,22 @@ class LayoutAndItemsTest
 		assertEquals(900, q[0].bottom); assertEquals(900, q[1].bottom)
 	}
 }
+
+class StyleV2Test
+{
+	@Test
+	fun newStyleFieldsAndLineHeight()
+	{
+		val s = CaptionStyle().merge(JSONObject("""{"font":"tajawal","outline":true,"outlineWidth":6,"speakerOwnLine":true,"placement":"top","font2":"x","widthMode":"bogus"}"""))
+		assertEquals("tajawal", s.font)
+		assertTrue(s.outline)
+		assertEquals(6f, s.outlineWidth)
+		assertTrue(s.speakerOwnLine)
+		assertEquals("top", s.placement)
+		assertEquals("match", s.widthMode)          // invalid value ignored
+		val m = Protocol.parse("""{"t":"show","items":[{"rect":[0.3,0.8,0.4,0.05],"lh":0.04,"lines":[{"t":"x"}]}]}""") as Msg.Show
+		assertEquals(0.04f, m.items[0].lineHeight)
+		assertTrue(Protocol.parse("""{"t":"update"}""") is Msg.Update)
+		assertEquals(34.56f, StackLayout.autoTextSize(43.2f, 1f), 0.01f)
+	}
+}

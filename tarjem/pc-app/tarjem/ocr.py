@@ -51,10 +51,13 @@ class WindowsOcr:
             words = list(line.words)
             if not words:
                 continue
-            rs = [w.bounding_rect for w in words]
-            box = Box(min(r.x for r in rs) / scale, min(r.y for r in rs) / scale,
-                      max(r.x + r.width for r in rs) / scale, max(r.y + r.height for r in rs) / scale)
-            lines.append(Line(line.text, box))
+            wl = []
+            for w in words:
+                r = w.bounding_rect
+                wl.append(Line(w.text, Box(r.x / scale, r.y / scale, (r.x + r.width) / scale, (r.y + r.height) / scale)))
+            box = Box(min(x.box.left for x in wl), min(x.box.top for x in wl),
+                      max(x.box.right for x in wl), max(x.box.bottom for x in wl))
+            lines.append(Line(line.text, box, tuple(wl)))
         return lines
 
     async def _recognize(self, img: Image.Image):

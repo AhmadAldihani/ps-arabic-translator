@@ -3,303 +3,441 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>ترجم — ترجمة عربية لألعاب بلايستيشن</title>
+<title>ترجمني</title>
 <style>
+  @font-face { font-family: "Plex"; src: url("/fonts/plex-regular.ttf"); font-weight: 400; }
+  @font-face { font-family: "Plex"; src: url("/fonts/plex.ttf"); font-weight: 700; }
+  @font-face { font-family: "CairoF"; src: url("/fonts/cairo.ttf"); font-weight: 100 900; }
+  @font-face { font-family: "TajawalF"; src: url("/fonts/tajawal-regular.ttf"); font-weight: 400; }
+  @font-face { font-family: "TajawalF"; src: url("/fonts/tajawal.ttf"); font-weight: 700; }
+  @font-face { font-family: "NaskhF"; src: url("/fonts/naskh.ttf"); font-weight: 100 900; }
   :root {
-    --bg: #0d1322; --card: #151d31; --line: #26314d; --text: #e8edf7; --muted: #94a0bb;
-    --gold: #f5b841; --blue: #3d6fe0; --ok: #34c27a; --bad: #ef5b5b; --warn: #f0a63a;
+    --bg: #070910; --panel: rgba(22, 26, 40, .72); --panel2: #121626; --line: rgba(255,255,255,.08);
+    --text: #eef1f8; --muted: #8f97ad; --accent: #ff4fa0; --accent2: #7b5cff; --gold: #ffc44d;
+    --ok: #2fd48a; --bad: #ff5d6c; --warn: #ffb547; --radius: 18px;
   }
   * { box-sizing: border-box; }
+  html, body { margin: 0; }
   body {
-    margin: 0; background: var(--bg); color: var(--text);
-    font-family: "Segoe UI", Tahoma, "Noto Naskh Arabic", sans-serif; font-size: 15px; line-height: 1.6;
+    background: radial-gradient(1200px 600px at 85% -10%, rgba(123,92,255,.22), transparent 60%),
+                radial-gradient(900px 500px at 0% 0%, rgba(255,79,160,.16), transparent 55%), var(--bg);
+    color: var(--text); font-family: "Plex", "Segoe UI", Tahoma, sans-serif; font-size: 15px; line-height: 1.65; min-height: 100vh;
   }
-  header {
-    display: flex; align-items: center; gap: 16px; padding: 18px 28px;
-    border-bottom: 1px solid var(--line); background: #0f1628; position: sticky; top: 0; z-index: 5;
-  }
-  .logo { width: 40px; height: 40px; border-radius: 10px; background: var(--gold); display: grid; place-items: center;
-          color: #1b2a4a; font-weight: 800; font-size: 20px; }
-  header h1 { font-size: 20px; margin: 0; }
-  header .sub { color: var(--muted); font-size: 13px; }
+  .wrap { max-width: 1320px; margin: 0 auto; padding: 22px 26px 60px; }
+  header { display: flex; align-items: center; gap: 16px; margin-bottom: 18px; }
+  .brand { display: flex; align-items: center; gap: 14px; }
+  .logo { width: 48px; height: 48px; border-radius: 15px; display: grid; place-items: center; font-weight: 800; font-size: 24px;
+          background: linear-gradient(135deg, var(--accent), var(--accent2)); box-shadow: 0 10px 30px rgba(255,79,160,.35); }
+  .brand h1 { margin: 0; font-size: 24px; letter-spacing: .3px; }
+  .brand .sub { color: var(--muted); font-size: 13px; }
   .grow { flex: 1; }
-  .pill { padding: 5px 12px; border-radius: 999px; font-size: 13px; background: #222c46; color: var(--muted); white-space: nowrap; }
-  .pill.ok { background: rgba(52,194,122,.15); color: var(--ok); }
-  .pill.bad { background: rgba(239,91,91,.15); color: var(--bad); }
-  .pill.warn { background: rgba(240,166,58,.15); color: var(--warn); }
-  main { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); gap: 20px; padding: 22px 28px; max-width: 1500px; margin: 0 auto; }
-  @media (max-width: 1050px) { main { grid-template-columns: 1fr; } }
-  .col { display: flex; flex-direction: column; gap: 20px; min-width: 0; }
-  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 18px 20px; }
-  .card h2 { margin: 0 0 4px; font-size: 17px; display: flex; align-items: center; gap: 10px; }
-  .num { width: 26px; height: 26px; border-radius: 50%; background: var(--gold); color: #1b2a4a; display: inline-grid;
-         place-items: center; font-size: 14px; font-weight: 800; }
-  .hint { color: var(--muted); font-size: 13px; margin: 0 0 12px; }
-  .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 8px 0; }
-  button {
-    font: inherit; border: 0; border-radius: 9px; padding: 8px 16px; cursor: pointer; color: #fff; background: #2a3658;
+  .pill { display: inline-flex; align-items: center; gap: 8px; padding: 7px 14px; border-radius: 999px; font-size: 13px;
+          background: rgba(255,255,255,.06); border: 1px solid var(--line); color: var(--muted); white-space: nowrap; }
+  .pill i { width: 8px; height: 8px; border-radius: 50%; background: #555c70; display: inline-block; }
+  .pill.ok { color: var(--ok); } .pill.ok i { background: var(--ok); box-shadow: 0 0 10px var(--ok); }
+  .pill.bad { color: var(--bad); } .pill.bad i { background: var(--bad); }
+  .pill.warn { color: var(--warn); } .pill.warn i { background: var(--warn); }
+
+  nav { display: flex; gap: 6px; padding: 6px; background: var(--panel); border: 1px solid var(--line); border-radius: 16px;
+        backdrop-filter: blur(14px); margin-bottom: 18px; width: fit-content; }
+  nav button { background: transparent; color: var(--muted); padding: 9px 18px; border-radius: 11px; font-weight: 600; }
+  nav button.on { background: linear-gradient(135deg, rgba(255,79,160,.9), rgba(123,92,255,.9)); color: #fff; }
+  .tab { display: none; } .tab.on { display: block; animation: fade .25s ease; }
+  @keyframes fade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; } }
+
+  .grid { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 18px; }
+  @media (max-width: 1050px) { .grid { grid-template-columns: 1fr; } }
+  .col { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 18px 20px; backdrop-filter: blur(14px); }
+  .card h2 { margin: 0 0 6px; font-size: 17px; display: flex; align-items: center; gap: 10px; }
+  .card h2 .ic { width: 30px; height: 30px; border-radius: 10px; display: grid; place-items: center; font-size: 15px;
+                 background: rgba(255,255,255,.07); }
+  .hint { color: var(--muted); font-size: 13px; margin: 2px 0 12px; }
+  .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 10px 0; }
+  button { font: inherit; border: 0; border-radius: 12px; padding: 9px 16px; cursor: pointer; color: #fff; background: rgba(255,255,255,.08);
+           transition: transform .08s, background .15s; }
+  button:hover { background: rgba(255,255,255,.14); } button:active { transform: scale(.98); }
+  button.primary { background: linear-gradient(135deg, var(--accent), var(--accent2)); font-weight: 700; }
+  button.big { font-size: 18px; padding: 14px 30px; border-radius: 15px; }
+  button.stop { background: var(--bad); font-weight: 700; }
+  button:disabled { opacity: .45; cursor: default; }
+  input[type=text], input[type=password], select, textarea {
+    font: inherit; color: var(--text); background: rgba(0,0,0,.35); border: 1px solid var(--line); border-radius: 11px; padding: 8px 12px; outline: none;
   }
-  button:hover { background: #34426b; }
-  button.primary { background: var(--blue); }
-  button.primary:hover { background: #4d7ef0; }
-  button.gold { background: var(--gold); color: #1b2a4a; font-weight: 700; }
-  button.big { font-size: 18px; padding: 12px 28px; font-weight: 700; }
-  button.stop { background: var(--bad); }
-  button:disabled { opacity: .5; cursor: default; }
-  input[type=text], select, textarea {
-    font: inherit; color: var(--text); background: #0f1628; border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px;
-  }
-  textarea { width: 100%; min-height: 64px; resize: vertical; }
+  input:focus, select:focus, textarea:focus { border-color: rgba(255,79,160,.6); }
+  textarea { width: 100%; min-height: 70px; resize: vertical; }
   label { color: var(--muted); font-size: 13px; }
-  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 18px; }
-  .field { display: flex; flex-direction: column; gap: 4px; }
-  input[type=range] { width: 100%; accent-color: var(--gold); }
-  input[type=color] { width: 100%; height: 34px; border: 1px solid var(--line); border-radius: 8px; background: #0f1628; padding: 2px; }
-  .status-line { font-size: 15px; }
+  .fields { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 18px; }
+  .fields.three { grid-template-columns: 1fr 1fr 1fr; }
+  .f { display: flex; flex-direction: column; gap: 6px; }
+  .f b { color: var(--text); font-weight: 600; }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+  input[type=color] { width: 100%; height: 38px; border: 1px solid var(--line); border-radius: 11px; background: rgba(0,0,0,.35); padding: 3px; cursor: pointer; }
+  .switch { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 12px; border-radius: 12px;
+            background: rgba(0,0,0,.22); border: 1px solid var(--line); cursor: pointer; color: var(--text); font-size: 14px; }
+  .switch input { display: none; }
+  .switch .t { width: 40px; height: 22px; border-radius: 99px; background: #39405a; position: relative; transition: .2s; flex: none; }
+  .switch .t::after { content: ""; position: absolute; top: 3px; right: 3px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: .2s; }
+  .switch input:checked + .t { background: var(--accent); }
+  .switch input:checked + .t::after { right: 21px; }
   .err { color: var(--bad); font-size: 13px; white-space: pre-wrap; }
-  .tvs { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
-  .tvs button { text-align: right; }
+  .okc { color: var(--ok); }
+  code { direction: ltr; display: inline-block; background: rgba(0,0,0,.4); padding: 1px 7px; border-radius: 6px; font-size: 12px; }
 
-  .preview { position: relative; background: #000; border-radius: 10px; overflow: hidden; aspect-ratio: 16/9;
-             user-select: none; cursor: crosshair; border: 1px solid var(--line); }
-  .preview img { width: 100%; height: 100%; object-fit: fill; display: block; pointer-events: none; }
+  .hero { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
+  .hero .status { font-size: 16px; }
+
+  .preview { position: relative; background: #000 center/cover no-repeat; border-radius: 14px; overflow: hidden; aspect-ratio: 16/9;
+             user-select: none; border: 1px solid var(--line); }
+  .preview.pick { cursor: crosshair; }
   .preview .empty { position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted); text-align: center; padding: 20px; }
-  .region { position: absolute; border: 2px solid var(--gold); background: rgba(245,184,65,.12); border-radius: 4px; pointer-events: none; }
-  .region span { position: absolute; top: -24px; right: 0; background: var(--gold); color: #1b2a4a; font-size: 12px;
-                 padding: 1px 8px; border-radius: 6px; font-weight: 700; white-space: nowrap; }
+  .region { position: absolute; border: 2px dashed var(--gold); background: rgba(255,196,77,.10); border-radius: 6px; pointer-events: none; }
+  .region span { position: absolute; top: -26px; right: 0; background: var(--gold); color: #1a1200; font-size: 12px; padding: 2px 9px; border-radius: 7px; font-weight: 700; white-space: nowrap; }
+  .stack { position: absolute; left: 50%; transform: translateX(-50%); width: 100%; display: flex; flex-direction: column; align-items: center;
+           gap: 8px; text-align: center; direction: rtl; pointer-events: none; }
+  #lookPrev { background-image: linear-gradient(180deg, #1d2b52 0%, #6a3d7a 45%, #e3835a 70%, #2b1b2f 71%, #120d18 100%); }
 
-  .sample-wrap { background: linear-gradient(135deg, #2a3d2a, #3b2d22 60%, #1d2b3d); border-radius: 10px; height: 150px;
-                 display: flex; align-items: flex-end; justify-content: center; padding-bottom: 18px; margin-top: 8px; }
-  .sample { padding: 6px 18px; text-align: center; max-width: 86%; direction: rtl; }
+  .presets { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; }
+  .preset { border-radius: 14px; padding: 14px 8px 10px; text-align: center; background: #20263a center/cover; border: 2px solid transparent; cursor: pointer; }
+  .preset:hover { border-color: rgba(255,255,255,.25); }
+  .preset .s { display: inline-block; padding: 2px 10px; font-size: 13px; }
+  .preset small { display: block; color: var(--muted); margin-top: 8px; font-size: 12px; }
+  .fonts { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
+  .font { padding: 10px 6px; border-radius: 12px; text-align: center; background: rgba(0,0,0,.25); border: 2px solid var(--line); cursor: pointer; font-size: 18px; }
+  .font.on { border-color: var(--accent); background: rgba(255,79,160,.12); }
+  .font small { display: block; font-family: "Plex"; font-size: 11px; color: var(--muted); }
 
-  .hist { display: flex; flex-direction: column; gap: 10px; max-height: 520px; overflow: auto; }
-  .item { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; background: #111a2d; }
+  .hist { display: flex; flex-direction: column; gap: 10px; max-height: 620px; overflow: auto; }
+  .item { border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px; background: rgba(0,0,0,.22); }
   .item .en { direction: ltr; text-align: left; color: var(--muted); font-size: 13px; }
-  .item .ar { font-size: 17px; margin-top: 4px; }
+  .item .ar { font-size: 18px; margin-top: 4px; }
   .item .meta { display: flex; gap: 8px; align-items: center; margin-top: 6px; color: var(--muted); font-size: 12px; }
-  .item .meta .grow { flex: 1; }
-  .tag { background: rgba(245,184,65,.15); color: var(--gold); padding: 0 8px; border-radius: 6px; }
+  .tag { padding: 0 8px; border-radius: 6px; font-size: 11px; }
+  .tag.ai { background: rgba(123,92,255,.2); color: #b9a8ff; } .tag.ed { background: rgba(255,196,77,.15); color: var(--gold); }
+  .update { display: none; padding: 10px 14px; border-radius: 12px; background: rgba(123,92,255,.15); border: 1px solid rgba(123,92,255,.4); margin-bottom: 14px; }
   details summary { cursor: pointer; color: var(--muted); font-size: 13px; margin-top: 10px; }
-  code { direction: ltr; display: inline-block; background: #0f1628; padding: 1px 6px; border-radius: 5px; font-size: 12px; }
 </style>
 </head>
 <body>
-<header>
-  <div class="logo">ت</div>
-  <div>
-    <h1>ترجم</h1>
-    <div class="sub">ترجمة عربية فوق ألعاب بلايستيشن على التلفزيون</div>
-  </div>
-  <div class="grow"></div>
-  <span id="pillTv" class="pill">التلفزيون: —</span>
-  <span id="pillRun" class="pill">متوقف</span>
-</header>
+<div class="wrap">
+  <header>
+    <div class="brand">
+      <div class="logo">ت</div>
+      <div><h1>ترجمني</h1><div class="sub">ترجمة عربية فوق ألعاب بلايستيشن على التلفزيون <span id="ver"></span></div></div>
+    </div>
+    <div class="grow"></div>
+    <span id="pillTv" class="pill"><i></i><span>التلفزيون</span></span>
+    <span id="pillRun" class="pill"><i></i><span>متوقف</span></span>
+  </header>
+  <div id="update" class="update"></div>
 
-<main>
-  <div class="col">
-    <section class="card">
-      <h2><span class="num">١</span> مصدر الصورة</h2>
-      <p class="hint">شغّل تطبيق <b>PS Remote Play</b> على اللابتوب واتصل بالبلايستيشن، وخلّه مفتوح (مو مصغّر). أنت تلعب على التلفزيون عادي، واللابتوب بس يقرأ الترجمة.</p>
-      <div class="row">
-        <select id="windowSel" style="flex:1; min-width:240px"></select>
-        <button id="btnWindows">تحديث القائمة</button>
-        <button id="btnPreview">تحديث الصورة</button>
-      </div>
-      <p class="hint" style="margin-top:12px">حدد <b>مكان ترجمة اللعبة</b>: اسحب بالماوس فوق الصورة على المنطقة اللي تطلع فيها الترجمة الإنجليزية.</p>
-      <div id="preview" class="preview">
-        <img id="previewImg" alt="">
-        <div id="previewEmpty" class="empty">ما فيه صورة للحين — شغّل PS Remote Play واضغط «تحديث الصورة»</div>
-        <div id="region" class="region"><span>مكان الترجمة</span></div>
-      </div>
-      <div class="row">
-        <button data-preset="0.10,0.70,0.80,0.28">الثلث السفلي</button>
-        <button data-preset="0.05,0.50,0.90,0.48">النصف السفلي</button>
-        <button data-preset="0,0,1,1">الشاشة كاملة</button>
-      </div>
-    </section>
+  <nav>
+    <button data-tab="home" class="on">التشغيل</button>
+    <button data-tab="look">شكل الترجمة</button>
+    <button data-tab="trans">جودة الترجمة</button>
+    <button data-tab="align">ضبط المكان</button>
+    <button data-tab="hist">السجل والتعديل</button>
+  </nav>
 
-    <section class="card">
-      <h2><span class="num">٣</span> آخر الترجمات</h2>
-      <p class="hint">ترجمة ما عجبتك؟ اضغط «تعديل» واكتب الصحيحة. البرنامج يحفظها ويستخدمها كل مرة تطلع نفس الجملة.</p>
-      <div id="hist" class="hist"><div class="hint">لسا ما فيه ترجمات.</div></div>
-    </section>
-  </div>
-
-  <div class="col">
-    <section class="card">
-      <h2><span class="num">٢</span> التلفزيون والتشغيل</h2>
-      <p class="hint">افتح برنامج <b>ترجم TV</b> على التلفزيون مرة وحدة، وتأكد أن اللابتوب والتلفزيون على نفس الواي فاي.</p>
-      <div class="row">
-        <button id="btnDiscover" class="primary">ابحث عن التلفزيون</button>
-        <input id="tvIp" type="text" placeholder="أو اكتب عنوان التلفزيون مثل 192.168.1.20" style="flex:1; min-width:180px; direction:ltr; text-align:right">
-        <button id="btnConnect">اتصال</button>
-      </div>
-      <div id="tvs" class="tvs"></div>
-      <div id="tvStatus" class="status-line"></div>
-      <div class="row">
-        <button id="btnTest">أرسل ترجمة تجربة للتلفزيون</button>
-      </div>
-      <details>
-        <summary>التلفزيون متصل بس ما يعرض شي فوق اللعبة؟</summary>
-        <p class="hint">التلفزيون يحتاج إذن «العرض فوق التطبيقات». إذا ما لقيته في إعدادات التلفزيون، فعّل <b>تصحيح الأخطاء عبر الشبكة (ADB)</b> من «خيارات المطوّر» في التلفزيون، واضغط الزر تحت، ووافق على الرسالة اللي تطلع على التلفزيون.</p>
-        <div class="row">
-          <input id="pairAddr" type="text" placeholder="(اختياري) عنوان الإقران ip:port" style="direction:ltr; flex:1">
-          <input id="pairCode" type="text" placeholder="(اختياري) رمز الإقران" style="direction:ltr; width:140px">
+  <!-- ============================== HOME -->
+  <section class="tab on" id="tab-home">
+    <div class="grid">
+      <div class="col">
+        <div class="card">
+          <h2><span class="ic">🎮</span> صورة اللعبة</h2>
+          <p class="hint">شغّل <b>PS Remote Play</b> على اللابتوب واتصل بالبلايستيشن، وخلّه مفتوح (مو مصغّر). أنت تلعب على التلفزيون عادي، واللابتوب يقرأ الترجمة بس. <b>اسحب بالماوس</b> على الصورة لتحديد منطقة ترجمة اللعبة.</p>
+          <div class="row">
+            <select id="windowSel" style="flex:1; min-width:240px"></select>
+            <button id="btnWindows">تحديث القائمة</button>
+            <button id="btnPreview">تحديث الصورة</button>
+          </div>
+          <div id="preview" class="preview pick">
+            <div id="previewEmpty" class="empty">ما فيه صورة للحين — شغّل PS Remote Play واضغط «تحديث الصورة»</div>
+            <div id="region" class="region"><span>منطقة الترجمة</span></div>
+          </div>
+          <div class="row">
+            <button data-preset-region="0.10,0.62,0.80,0.36">الجزء السفلي</button>
+            <button data-preset-region="0.05,0.45,0.90,0.53">النصف السفلي</button>
+            <button data-preset-region="0,0,1,1">الشاشة كاملة</button>
+          </div>
         </div>
-        <div class="row"><button id="btnAdb" class="gold">تفعيل الإذن على التلفزيون</button></div>
-        <div id="adbLog" class="hint" style="white-space:pre-wrap; direction:ltr; text-align:left"></div>
-      </details>
+      </div>
+      <div class="col">
+        <div class="card">
+          <h2><span class="ic">▶</span> التشغيل</h2>
+          <div class="hero" style="margin:8px 0 4px">
+            <button id="btnRun" class="primary big">▶ تشغيل الترجمة</button>
+            <div class="status"><div id="runStatus">متوقف</div><div id="fps" class="hint" style="margin:0"></div></div>
+          </div>
+          <div id="err" class="err"></div>
+        </div>
+        <div class="card">
+          <h2><span class="ic">📺</span> التلفزيون</h2>
+          <p class="hint">افتح <b>ترجمني</b> على التلفزيون، وخلّ اللابتوب والتلفزيون على نفس الواي فاي.</p>
+          <div class="row">
+            <button id="btnDiscover" class="primary">ابحث عن التلفزيون</button>
+            <input id="tvIp" type="text" placeholder="أو عنوان التلفزيون مثل 192.168.1.20" style="flex:1; min-width:160px; direction:ltr; text-align:right">
+            <button id="btnConnect">اتصال</button>
+          </div>
+          <div id="tvs" class="row"></div>
+          <div id="tvStatus"></div>
+          <div class="row"><button id="btnTest">أرسل تجربة للتلفزيون</button><button id="btnTvUpdate">تحديث برنامج التلفزيون</button></div>
+          <details>
+            <summary>التلفزيون متصل بس ما يعرض شي فوق اللعبة؟</summary>
+            <p class="hint">فعّل في التلفزيون <b>خيارات المطوّر ← تصحيح الأخطاء عبر الشبكة</b>، واضغط الزر، ووافق على الرسالة اللي تطلع على التلفزيون.</p>
+            <div class="row">
+              <input id="pairAddr" type="text" placeholder="(اختياري) عنوان الإقران ip:port" style="direction:ltr; flex:1">
+              <input id="pairCode" type="text" placeholder="(اختياري) رمز الإقران" style="direction:ltr; width:140px">
+            </div>
+            <div class="row"><button id="btnAdb">تفعيل الإذن على التلفزيون</button></div>
+            <div id="adbLog" class="hint" style="white-space:pre-wrap; direction:ltr; text-align:left"></div>
+          </details>
+        </div>
+      </div>
+    </div>
+  </section>
 
-      <hr style="border:0; border-top:1px solid var(--line); margin:16px 0">
-      <div class="grid2">
-        <div class="field"><label>لغة الترجمة في اللعبة</label>
-          <select id="lang">
-            <option value="en">الإنجليزية</option><option value="fr">الفرنسية</option><option value="es">الإسبانية</option>
-            <option value="de">الألمانية</option><option value="it">الإيطالية</option><option value="pt">البرتغالية</option>
-          </select></div>
-        <div class="field"><label>سرعة القراءة</label>
-          <select id="speed">
-            <option value="0.2">سريعة</option><option value="0.3">عادية</option><option value="0.6">موفّرة</option>
-          </select></div>
+  <!-- ============================== LOOK -->
+  <section class="tab" id="tab-look">
+    <div class="grid">
+      <div class="col">
+        <div class="card">
+          <h2><span class="ic">👁</span> معاينة مباشرة</h2>
+          <p class="hint">كل تعديل يطلع هنا وعلى التلفزيون على طول.</p>
+          <div id="lookPrev" class="preview"><div id="lookCaps"></div></div>
+          <div class="row"><button id="btnTest2" class="primary">أرسل المعاينة للتلفزيون</button></div>
+        </div>
+        <div class="card">
+          <h2><span class="ic">✨</span> أشكال جاهزة</h2>
+          <div class="presets" id="presets"></div>
+        </div>
       </div>
-      <div class="row"><label><input id="centered" type="checkbox"> تجاهل النصوص الجانبية (الخريطة، الفلوس، القوائم)</label></div>
-      <div class="row" style="margin-top:14px">
-        <button id="btnRun" class="gold big">▶ تشغيل الترجمة</button>
-        <div class="status-line"><span id="runStatus">متوقف</span> <span id="fps" class="hint"></span></div>
+      <div class="col">
+        <div class="card">
+          <h2><span class="ic">🔤</span> الخط</h2>
+          <div class="fonts" id="fonts"></div>
+          <div class="fields" style="margin-top:14px">
+            <label class="switch">حجم مثل الترجمة الأصلية <input id="autoSize" type="checkbox"><span class="t"></span></label>
+            <label class="switch">خط عريض <input id="bold" type="checkbox"><span class="t"></span></label>
+            <div class="f" id="fScale"><label>التكبير: <b id="sizeScaleV"></b></label><input id="sizeScale" type="range" min="0.6" max="1.8" step="0.02"></div>
+            <div class="f" id="fSize"><label>الحجم: <b id="sizeV"></b></label><input id="size" type="range" min="16" max="90" step="1"></div>
+            <div class="f"><label>تباعد الأسطر: <b id="lineSpacingV"></b></label><input id="lineSpacing" type="range" min="0.9" max="1.8" step="0.02"></div>
+            <div class="f"><label>لون الخط</label><input id="fg" type="color"></div>
+          </div>
+        </div>
+        <div class="card">
+          <h2><span class="ic">🗣</span> اسم الشخصية</h2>
+          <div class="fields">
+            <div class="f"><label>لون الاسم</label><input id="speaker" type="color"></div>
+            <label class="switch">اسم عريض <input id="speakerBold" type="checkbox"><span class="t"></span></label>
+            <label class="switch" style="grid-column: span 2">الاسم في سطر لحاله <input id="speakerOwnLine" type="checkbox"><span class="t"></span></label>
+          </div>
+        </div>
+        <div class="card">
+          <h2><span class="ic">▭</span> الخلفية والحدود</h2>
+          <div class="fields">
+            <div class="f"><label>لون الخلفية</label><input id="bg" type="color"></div>
+            <div class="f"><label>شفافية الخلفية: <b id="bgAlphaV"></b></label><input id="bgAlpha" type="range" min="0" max="1" step="0.02"></div>
+            <div class="f"><label>استدارة الحواف: <b id="radiusV"></b></label><input id="radius" type="range" min="0" max="40" step="1"></div>
+            <div class="f"><label>الهامش الجانبي: <b id="padXV"></b></label><input id="padX" type="range" min="0" max="60" step="1"></div>
+            <div class="f"><label>الهامش العلوي: <b id="padYV"></b></label><input id="padY" type="range" min="0" max="40" step="1"></div>
+            <label class="switch">ظل للخط <input id="shadow" type="checkbox"><span class="t"></span></label>
+            <label class="switch">إطار حول الحروف <input id="outline" type="checkbox"><span class="t"></span></label>
+            <div class="f"><label>لون الإطار</label><input id="outlineColor" type="color"></div>
+            <div class="f" style="grid-column: span 2"><label>سماكة الإطار: <b id="outlineWidthV"></b></label><input id="outlineWidth" type="range" min="1" max="12" step="0.5"></div>
+          </div>
+        </div>
+        <div class="card">
+          <h2><span class="ic">⇕</span> المكان والعرض</h2>
+          <div class="fields">
+            <div class="f"><label>مكان الترجمة العربية</label>
+              <select id="placement"><option value="cover">فوق الترجمة الأصلية</option><option value="bottom">أسفل الشاشة</option><option value="top">أعلى الشاشة</option></select></div>
+            <div class="f"><label>عرض المربع</label>
+              <select id="widthMode"><option value="match">نفس عرض الإنجليزي</option><option value="fit">على قد الكلام</option></select></div>
+            <div class="f" style="grid-column: span 2"><label>أقصى عرض: <b id="maxWidthV"></b></label><input id="maxWidth" type="range" min="0.3" max="1" step="0.01"></div>
+          </div>
+        </div>
       </div>
-      <div id="err" class="err"></div>
-    </section>
+    </div>
+  </section>
 
-    <section class="card">
-      <h2><span class="num">٤</span> شكل الترجمة على التلفزيون</h2>
-      <div class="grid2">
-        <div class="field"><label>حجم الخط: <b id="sizeVal"></b></label><input id="size" type="range" min="18" max="72" step="1"></div>
-        <div class="field"><label>شفافية الخلفية: <b id="alphaVal"></b></label><input id="bgAlpha" type="range" min="0" max="1" step="0.05"></div>
-        <div class="field"><label>لون الخط</label><input id="fg" type="color"></div>
-        <div class="field"><label>لون الخلفية</label><input id="bg" type="color"></div>
-        <div class="field"><label>نوع الخط</label>
-          <select id="font"><option value="sans">عادي</option><option value="serif">كلاسيكي</option><option value="condensed">مضغوط</option></select></div>
-        <div class="field"><label>مكان الترجمة العربية</label>
-          <select id="placement"><option value="cover">فوق الترجمة الأصلية</option><option value="bottom">أسفل الشاشة دائماً</option></select></div>
-        <div class="field"><label>استدارة الحواف: <b id="radiusVal"></b></label><input id="radius" type="range" min="0" max="40" step="1"></div>
-        <div class="field"><label>لون اسم الشخصية</label><input id="speaker" type="color"></div>
-        <div class="field"><label>&nbsp;</label><label><input id="bold" type="checkbox"> خط عريض</label></div>
+  <!-- ============================== TRANSLATION -->
+  <section class="tab" id="tab-trans">
+    <div class="grid">
+      <div class="col">
+        <div class="card">
+          <h2><span class="ic">🧠</span> ترجمة ذكية مثل المترجم المحترف</h2>
+          <p class="hint">الترجمة العادية (Google) سريعة بس حرفية. الترجمة الذكية تفهم GTA وسياق الحوار وتترجم المعنى والسوالف بشكل طبيعي. البرنامج يعرض الترجمة السريعة <b>فوراً</b>، وبعد لحظة يستبدلها بالذكية، والجمل اللي تتكرر تطلع ذكية على طول.</p>
+          <p class="hint">أسهل خيار: <b>Gemini مجاني</b>. خذ مفتاح من <code>aistudio.google.com/apikey</code> والصقه هنا.</p>
+          <div class="fields">
+            <div class="f"><label>المزوّد</label>
+              <select id="aiProvider"><option value="">بدون (Google فقط)</option><option value="gemini">Google Gemini (مجاني)</option><option value="claude">Claude (Anthropic)</option></select></div>
+            <div class="f"><label>اللهجة</label>
+              <select id="dialect"><option value="msa">فصحى مبسطة (مثل نتفلكس)</option><option value="gulf">خليجي</option></select></div>
+            <div class="f" style="grid-column: span 2"><label>المفتاح (API key)</label><input id="aiKey" type="password" placeholder="الصق المفتاح هنا" style="direction:ltr"></div>
+            <div class="f" style="grid-column: span 2"><label>الموديل (اختياري)</label><input id="aiModel" type="text" placeholder="تلقائي" style="direction:ltr"></div>
+          </div>
+          <div class="row"><button id="btnAiSave" class="primary">حفظ وتجربة</button><span id="aiResult"></span></div>
+        </div>
+        <div class="card">
+          <h2><span class="ic">⚡</span> السرعة والقراءة</h2>
+          <div class="fields">
+            <div class="f"><label>سرعة القراءة: <b id="intervalV"></b></label><input id="interval" type="range" min="0.08" max="0.6" step="0.01"></div>
+            <div class="f"><label>لغة الترجمة في اللعبة</label>
+              <select id="lang"><option value="en">الإنجليزية</option><option value="fr">الفرنسية</option><option value="es">الإسبانية</option>
+                <option value="de">الألمانية</option><option value="it">الإيطالية</option><option value="pt">البرتغالية</option></select></div>
+            <label class="switch">تجاهل النصوص الجانبية <input id="centered" type="checkbox"><span class="t"></span></label>
+            <label class="switch">اكتشاف اسم الشخصية من لونه <input id="colourNames" type="checkbox"><span class="t"></span></label>
+          </div>
+        </div>
       </div>
-      <div class="sample-wrap"><div id="sample" class="sample"><span id="sampleName">جيسون: </span>توقفي يا لوسيا، لازم نطلع قبل لا توصل العاصفة.</div></div>
-    </section>
-    <section class="card">
-      <h2><span class="num">٥</span> ضبط المكان على التلفزيون</h2>
-      <p class="hint">البرنامج يحدد مكان الترجمة الإنجليزية ويحط العربي فوقها تلقائياً. إذا شفت المربع العربي مزحوم شوي عنها:
-        <br>١) من إعدادات صورة التلفزيون خلّ حجم الصورة <b>«ملء الشاشة / Screen Fit / Just Scan / 1:1»</b>، لأن التكبير اللي يسويه التلفزيون (Overscan) يحرّك الصورة.
-        <br>٢) اضغط «عرض مربع الضبط» وعدّل الأشرطة لين يغطي المربع الترجمة الإنجليزية بالضبط. يتحفظ لحاله.</p>
-      <div class="grid2">
-        <div class="field"><label>يمين / يسار: <b id="dxVal"></b></label><input id="dx" type="range" min="-0.1" max="0.1" step="0.002"></div>
-        <div class="field"><label>فوق / تحت: <b id="dyVal"></b></label><input id="dy" type="range" min="-0.1" max="0.1" step="0.002"></div>
-        <div class="field"><label>تكبير / تصغير: <b id="zoomVal"></b></label><input id="zoom" type="range" min="0.9" max="1.1" step="0.002"></div>
-        <div class="field"><label>&nbsp;</label><div class="row" style="margin:0"><button id="btnCalib" class="primary">عرض مربع الضبط</button><button id="btnCalibReset">رجوع للأصل</button></div></div>
+      <div class="col">
+        <div class="card">
+          <h2><span class="ic">📖</span> أسماء الشخصيات والأماكن</h2>
+          <p class="hint">سطر لكل اسم: <code>English = عربي</code>. الترجمة الذكية تلتزم فيها، وتنعرض أسماء المتكلمين بنفس الكتابة.</p>
+          <textarea id="glossary" style="min-height:300px; direction:ltr"></textarea>
+          <div class="row"><button id="btnGlossary" class="primary">حفظ الأسماء</button><span id="glossaryOk" class="okc"></span></div>
+        </div>
       </div>
-    </section>
-  </div>
-</main>
+    </div>
+  </section>
+
+  <!-- ============================== ALIGN -->
+  <section class="tab" id="tab-align">
+    <div class="grid">
+      <div class="col">
+        <div class="card">
+          <h2><span class="ic">🎯</span> ضبط المكان على التلفزيون</h2>
+          <p class="hint">البرنامج يكتشف مكان الترجمة الإنجليزية <b>تلقائياً</b>، ويحط فوقها مربع عربي بنفس حجمها ومكانها.
+            إذا شفت المربع مزحوم عنها شوي، فالسبب غالباً أن التلفزيون يكبّر صورة HDMI. الحل:</p>
+          <p class="hint">١) من إعدادات صورة التلفزيون خلّ «حجم الصورة» على <b>Screen Fit / Just Scan / ملء الشاشة / 1:1</b>.<br>
+            ٢) خلّ ترجمة اللعبة ظاهرة، واضغط «عرض مربع الضبط»، وحرّك الأشرطة لين يغطيها بالضبط. يتحفظ لحاله.</p>
+          <div class="fields">
+            <div class="f"><label>يمين / يسار: <b id="dxV"></b></label><input id="dx" type="range" min="-0.1" max="0.1" step="0.001"></div>
+            <div class="f"><label>فوق / تحت: <b id="dyV"></b></label><input id="dy" type="range" min="-0.1" max="0.1" step="0.001"></div>
+            <div class="f"><label>تكبير / تصغير: <b id="zoomV"></b></label><input id="zoom" type="range" min="0.9" max="1.1" step="0.001"></div>
+            <div class="f"><label>&nbsp;</label><div class="row" style="margin:0"><button id="btnCalib" class="primary">عرض مربع الضبط</button><button id="btnCalibReset">رجوع للأصل</button></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================== HISTORY -->
+  <section class="tab" id="tab-hist">
+    <div class="card">
+      <h2><span class="ic">✏</span> آخر الترجمات</h2>
+      <p class="hint">ترجمة ما عجبتك؟ اضغط «تعديل»، والبرنامج يستخدم تعديلك كل مرة تطلع نفس الجملة.</p>
+      <div id="hist" class="hist"><div class="hint">لسا ما فيه ترجمات.</div></div>
+    </div>
+  </section>
+</div>
 
 <script>
 const $ = id => document.getElementById(id);
-let state = null, inited = false, editing = new Set(), styleTimer = null;
+let state = null, inited = false, editing = new Set(), timers = {};
+const FONT_CSS = {cairo: "CairoF", tajawal: "TajawalF", plex: "Plex", naskh: "NaskhF", system: "Segoe UI, Tahoma"};
+const FONT_NAMES = {cairo: "القاهرة", tajawal: "تجوال", plex: "بليكس", naskh: "نسخ", system: "النظام"};
+const PRESET_NAMES = {classic: "كلاسيكي", cinema: "سينمائي", netflix: "نتفلكس", gta: "فايس سيتي", yellow: "أصفر"};
+const PRESET_LOOK = {
+  classic: {fg: "#FFFFFF", bg: "rgba(11,15,26,.9)", sp: "#F5B841", font: "cairo"},
+  cinema: {fg: "#FFFFFF", bg: "transparent", sp: "#FFD54A", font: "tajawal", stroke: true},
+  netflix: {fg: "#FFFFFF", bg: "rgba(0,0,0,.6)", sp: "#E50914", font: "plex"},
+  gta: {fg: "#FFFFFF", bg: "rgba(26,11,46,.85)", sp: "#FF5FA2", font: "cairo"},
+  yellow: {fg: "#FFE14D", bg: "rgba(0,0,0,.55)", sp: "#7FE3FF", font: "naskh", stroke: true},
+};
 
 async function api(path, body) {
   const r = await fetch(path, body === undefined ? {} : {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)});
   return r.json();
 }
+function debounce(name, fn, ms) { clearTimeout(timers[name]); timers[name] = setTimeout(fn, ms); }
+function esc(s) { return String(s ?? "").replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c])); }
+function rgba(hex, a) { const h = hex.replace("#", ""); return `rgba(${parseInt(h.substr(0,2),16)},${parseInt(h.substr(2,2),16)},${parseInt(h.substr(4,2),16)},${a})`; }
 
-function setRegion(r) {
-  const el = $("region");
-  el.style.left = (r[0] * 100) + "%"; el.style.top = (r[1] * 100) + "%";
-  el.style.width = (r[2] * 100) + "%"; el.style.height = (r[3] * 100) + "%";
-}
-
-function renderSample(s) {
-  const el = $("sample");
-  const hex = s.bg.replace("#", "");
-  const [r, g, b] = [0, 2, 4].map(i => parseInt(hex.substr(i, 2), 16));
-  el.style.background = `rgba(${r},${g},${b},${s.bgAlpha})`;
-  el.style.color = s.fg;
-  el.style.fontSize = Math.round(s.size * 0.55) + "px";
-  el.style.fontWeight = s.bold ? "700" : "400";
-  el.style.borderRadius = Math.round(s.radius * 0.55) + "px";
-  el.style.fontFamily = s.font === "serif" ? "'Times New Roman', 'Noto Naskh Arabic', serif" : (s.font === "condensed" ? "'Arial Narrow', Tahoma, sans-serif" : "'Segoe UI', Tahoma, sans-serif");
-  el.style.textShadow = (s.outline || s.bgAlpha < .5) ? "0 1px 3px #000" : "none";
-  $("sampleName").style.color = s.speaker || "#F5B841";
-  $("sizeVal").textContent = s.size; $("alphaVal").textContent = Math.round(s.bgAlpha * 100) + "%"; $("radiusVal").textContent = s.radius;
-}
-
-function readStyle() {
-  return {
-    size: +$("size").value, bgAlpha: +$("bgAlpha").value, fg: $("fg").value, bg: $("bg").value,
-    font: $("font").value, placement: $("placement").value, radius: +$("radius").value, bold: $("bold").checked,
-    speaker: $("speaker").value,
-  };
-}
-
-function initControls(c) {
-  const s = c.style;
-  $("size").value = s.size; $("bgAlpha").value = s.bgAlpha; $("fg").value = s.fg; $("bg").value = s.bg;
-  $("font").value = s.font; $("placement").value = s.placement; $("radius").value = s.radius; $("bold").checked = s.bold;
-  $("speaker").value = s.speaker || "#F5B841";
-  const k = c.calib || {dx: 0, dy: 0, zoom: 1};
-  $("dx").value = k.dx; $("dy").value = k.dy; $("zoom").value = k.zoom; renderCalib();
-  $("lang").value = c.source_lang; $("speed").value = String(c.interval); $("centered").checked = c.centered_only;
-  if (c.tv_ip) $("tvIp").value = c.tv_ip;
-  setRegion(c.region);
-  renderSample(s);
-}
-
-function renderCalib() {
-  const pct = v => (v > 0 ? "+" : "") + (v * 100).toFixed(1) + "%";
-  $("dxVal").textContent = pct(+$("dx").value); $("dyVal").textContent = pct(+$("dy").value);
-  $("zoomVal").textContent = (+$("zoom").value * 100).toFixed(1) + "%";
-}
-let calibTimer = null;
-["dx", "dy", "zoom"].forEach(id => $(id).addEventListener("input", () => {
-  renderCalib(); clearTimeout(calibTimer);
-  calibTimer = setTimeout(() => api("/api/config", {calib: {dx: +$("dx").value, dy: +$("dy").value, zoom: +$("zoom").value}, preview: true}), 150);
-}));
-$("btnCalib").onclick = () => api("/api/calib_show", {});
-$("btnCalibReset").onclick = () => { $("dx").value = 0; $("dy").value = 0; $("zoom").value = 1; renderCalib();
-  api("/api/config", {calib: {dx: 0, dy: 0, zoom: 1}, preview: true}); };
-
-["size", "bgAlpha", "fg", "bg", "font", "placement", "radius", "bold", "speaker"].forEach(id => {
-  $(id).addEventListener("input", () => {
-    const s = readStyle(); renderSample({...state.config.style, ...s});
-    clearTimeout(styleTimer);
-    styleTimer = setTimeout(() => api("/api/config", {style: s}), 250);
-  });
+document.querySelectorAll("nav button").forEach(b => b.onclick = () => {
+  document.querySelectorAll("nav button").forEach(x => x.classList.toggle("on", x === b));
+  document.querySelectorAll(".tab").forEach(t => t.classList.toggle("on", t.id === "tab-" + b.dataset.tab));
+  if (b.dataset.tab === "look") renderLook();
 });
-$("lang").onchange = () => api("/api/config", {source_lang: $("lang").value});
-$("speed").onchange = () => api("/api/config", {interval: +$("speed").value});
-$("centered").onchange = () => api("/api/config", {centered_only: $("centered").checked});
 
+// ---------------------------------------------------------------- style editor
+const STYLE_IDS = ["autoSize", "sizeScale", "size", "bold", "fg", "bg", "bgAlpha", "radius", "padX", "padY", "outline", "outlineColor",
+  "outlineWidth", "shadow", "lineSpacing", "speaker", "speakerBold", "speakerOwnLine", "placement", "widthMode", "maxWidth"];
+function readStyle() {
+  const s = {font: state.config.style.font};
+  STYLE_IDS.forEach(id => { const el = $(id); s[id] = el.type === "checkbox" ? el.checked : (el.type === "range" ? +el.value : el.value); });
+  return s;
+}
+function fillStyle(s) {
+  STYLE_IDS.forEach(id => { const el = $(id); if (!el) return; if (el.type === "checkbox") el.checked = !!s[id]; else el.value = s[id]; });
+  document.querySelectorAll(".font").forEach(f => f.classList.toggle("on", f.dataset.font === s.font));
+  labels();
+}
+function labels() {
+  const v = (id, t) => $(id + "V") && ($(id + "V").textContent = t);
+  v("sizeScale", Math.round($("sizeScale").value * 100) + "%"); v("size", $("size").value); v("lineSpacing", (+$("lineSpacing").value).toFixed(2));
+  v("bgAlpha", Math.round($("bgAlpha").value * 100) + "%"); v("radius", $("radius").value); v("padX", $("padX").value); v("padY", $("padY").value);
+  v("outlineWidth", $("outlineWidth").value); v("maxWidth", Math.round($("maxWidth").value * 100) + "%");
+  $("fScale").style.display = $("autoSize").checked ? "" : "none"; $("fSize").style.display = $("autoSize").checked ? "none" : "";
+}
+STYLE_IDS.forEach(id => $(id).addEventListener("input", () => {
+  labels(); state.config.style = {...state.config.style, ...readStyle()}; renderLook();
+  debounce("style", () => api("/api/config", {style: readStyle()}), 200);
+}));
+function buildFonts() {
+  $("fonts").innerHTML = Object.keys(FONT_CSS).map(k => `<div class="font" data-font="${k}" style="font-family:${FONT_CSS[k]}">ترجمة<small>${FONT_NAMES[k]}</small></div>`).join("");
+  document.querySelectorAll(".font").forEach(f => f.onclick = () => {
+    state.config.style.font = f.dataset.font; fillStyle(state.config.style); renderLook();
+    api("/api/config", {style: {font: f.dataset.font}});
+  });
+}
+function buildPresets() {
+  $("presets").innerHTML = Object.keys(PRESET_NAMES).map(k => { const p = PRESET_LOOK[k];
+    return `<div class="preset" data-p="${k}" style="background-image:linear-gradient(135deg,#2b3a2a,#3d2a20 60%,#1b2840)">
+      <span class="s" style="font-family:${FONT_CSS[p.font]};color:${p.fg};background:${p.bg};border-radius:8px;${p.stroke ? "text-shadow:0 0 3px #000,0 0 3px #000" : ""}"><b style="color:${p.sp}">جيسون:</b> يلا</span>
+      <small>${PRESET_NAMES[k]}</small></div>`; }).join("");
+  document.querySelectorAll(".preset").forEach(p => p.onclick = async () => {
+    await api("/api/config", {preset: p.dataset.p}); state = await api("/api/state"); fillStyle(state.config.style); renderLook();
+  });
+}
+function capHtml(s, scale, lines) {
+  const fs = (s.autoSize ? 30 * s.sizeScale : s.size) * scale;
+  const stroke = s.outline ? `-webkit-text-stroke:${s.outlineWidth * scale * 0.6}px ${s.outlineColor};paint-order:stroke fill;` : "";
+  const shadow = s.shadow ? `text-shadow:0 ${2*scale}px ${5*scale}px rgba(0,0,0,.9);` : "";
+  const body = lines.map(l => (l.s ? `<span style="color:${s.speaker};font-weight:${s.speakerBold ? 700 : "inherit"}">${esc(l.s)}:</span>${s.speakerOwnLine ? "<br>" : " "}` : "") + esc(l.t)).join("<br>");
+  return `<div style="font-family:${FONT_CSS[s.font] || "Plex"};font-size:${fs}px;font-weight:${s.bold ? 700 : 400};color:${s.fg};line-height:${s.lineSpacing};
+    background:${rgba(s.bg, s.bgAlpha)};border-radius:${s.radius*scale}px;padding:${s.padY*scale}px ${s.padX*scale}px;${stroke}${shadow}">${body}</div>`;
+}
+function renderLook() {
+  if (!state) return;
+  const box = $("lookPrev"), w = box.clientWidth || 640, scale = w / 1920, s = {...state.config.style};
+  const caps = [[{s: "جيسون", t: "توقفي يا لوسيا!"}], [{s: "لوسيا", t: "ما راح أوقف، لازم نخلص الشغلة الحين."}]];
+  const pos = s.placement === "top" ? "top:6%" : "bottom:6%";
+  $("lookCaps").innerHTML = `<div class="stack" style="${pos};max-width:${s.maxWidth*100}%">` +
+    caps.map(c => `<div style="width:${s.widthMode === "match" ? "62%" : "auto"};max-width:100%">${capHtml(s, scale * 1.8, c)}</div>`).join("") + "</div>";
+}
+$("btnTest2").onclick = () => api("/api/test", {});
+
+// ---------------------------------------------------------------- region / preview
+function setRegion(r) { const el = $("region"); [el.style.left, el.style.top, el.style.width, el.style.height] = r.map(v => (v * 100) + "%"); }
 async function loadWindows() {
-  const wins = await api("/api/windows");
-  const sel = $("windowSel"), cur = state ? state.config.window_title : "";
-  sel.innerHTML = '<option value="">تلقائي (أبحث عن PS Remote Play)</option>' +
-    wins.map(w => `<option value="${w.title.replace(/"/g, "&quot;")}">${w.likely ? "🎮 " : ""}${w.title}${w.minimized ? " (مصغّرة)" : ""}</option>`).join("");
+  const wins = await api("/api/windows"), sel = $("windowSel"), cur = state ? state.config.window_title : "";
+  sel.innerHTML = '<option value="">تلقائي (PS Remote Play)</option>' + wins.map(w => `<option value="${esc(w.title)}">${w.likely ? "🎮 " : ""}${esc(w.title)}${w.minimized ? " (مصغّرة)" : ""}</option>`).join("");
   sel.value = cur || "";
 }
 $("windowSel").onchange = () => api("/api/config", {window_title: $("windowSel").value}).then(refreshPreview);
 $("btnWindows").onclick = loadWindows;
-
 function refreshPreview() {
-  const img = $("previewImg");
-  img.onload = () => { $("previewEmpty").style.display = "none"; };
-  img.onerror = () => { img.removeAttribute("src"); $("previewEmpty").style.display = "grid"; };
-  img.src = "/api/preview.jpg?t=" + Date.now();
+  const url = "/api/preview.jpg?t=" + Date.now(), img = new Image();
+  img.onload = () => { ["preview", "lookPrev"].forEach(id => $(id).style.backgroundImage = `url(${url})`); $("previewEmpty").style.display = "none"; };
+  img.onerror = () => { $("previewEmpty").style.display = "grid"; };
+  img.src = url;
 }
 $("btnPreview").onclick = refreshPreview;
-
-document.querySelectorAll("[data-preset]").forEach(b => b.onclick = () => {
-  const r = b.dataset.preset.split(",").map(Number); setRegion(r); api("/api/config", {region: r});
+document.querySelectorAll("[data-preset-region]").forEach(b => b.onclick = () => {
+  const r = b.dataset.presetRegion.split(",").map(Number); setRegion(r); api("/api/config", {region: r});
 });
-
 (() => {
   const box = $("preview"); let start = null;
   const pos = e => { const r = box.getBoundingClientRect();
@@ -314,17 +452,16 @@ document.querySelectorAll("[data-preset]").forEach(b => b.onclick = () => {
   });
 })();
 
+// ---------------------------------------------------------------- TV
 $("btnDiscover").onclick = async () => {
   $("btnDiscover").disabled = true; $("btnDiscover").textContent = "جاري البحث…";
   const r = await api("/api/discover", {});
   $("btnDiscover").disabled = false; $("btnDiscover").textContent = "ابحث عن التلفزيون";
-  if (!r.found || !r.found.length) $("tvs").innerHTML = '<div class="err">ما لقيت التلفزيون. تأكد أن برنامج «ترجم TV» مفتوح على التلفزيون وأنكم على نفس الواي فاي، أو اكتب العنوان اللي يطلع على شاشة التلفزيون.</div>';
+  if (!r.found || !r.found.length) $("tvs").innerHTML = '<div class="err">ما لقيت التلفزيون. تأكد أن «ترجمني» مفتوح على التلفزيون وأنكم على نفس الواي فاي، أو اكتب العنوان اللي يطلع على شاشته.</div>';
 };
 $("btnConnect").onclick = () => api("/api/connect", {ip: $("tvIp").value.trim()});
-$("btnTest").onclick = async () => {
-  const r = await api("/api/test", {});
-  if (!r.ok) alert("التلفزيون مو متصل للحين.");
-};
+$("btnTest").onclick = async () => { const r = await api("/api/test", {}); if (!r.ok) alert("التلفزيون مو متصل للحين."); };
+$("btnTvUpdate").onclick = async () => { const r = await api("/api/tv_update", {}); alert(r.ok ? "أرسلت طلب التحديث. على التلفزيون اضغط «تثبيت»." : "التلفزيون مو متصل."); };
 $("btnAdb").onclick = async () => {
   $("adbLog").textContent = "جاري التفعيل… إذا طلعت رسالة على التلفزيون اختر «سماح».";
   const r = await api("/api/adb_grant", {ip: $("tvIp").value.trim(), pair_address: $("pairAddr").value.trim(), pair_code: $("pairCode").value.trim()});
@@ -332,56 +469,101 @@ $("btnAdb").onclick = async () => {
 };
 $("btnRun").onclick = () => api(state && state.running ? "/api/stop" : "/api/start", {});
 
-function esc(s) { return String(s).replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c])); }
+// ---------------------------------------------------------------- translation settings
+$("btnAiSave").onclick = async () => {
+  $("aiResult").textContent = "جاري التجربة…"; $("aiResult").className = "";
+  await api("/api/config", {ai: {provider: $("aiProvider").value, key: $("aiKey").value.trim(), model: $("aiModel").value.trim()}, dialect: $("dialect").value});
+  if (!$("aiProvider").value) { $("aiResult").textContent = "تم الحفظ — بدون ترجمة ذكية"; return; }
+  const r = await api("/api/ai_test", {});
+  $("aiResult").className = r.ok ? "okc" : "err";
+  $("aiResult").textContent = r.ok ? "✅ تشتغل: " + r.text : "❌ " + r.error;
+};
+$("dialect").onchange = () => api("/api/config", {dialect: $("dialect").value});
+$("lang").onchange = () => api("/api/config", {source_lang: $("lang").value});
+$("interval").oninput = () => { $("intervalV").textContent = Math.round(1 / $("interval").value) + " مرة/ثانية"; debounce("iv", () => api("/api/config", {interval: +$("interval").value}), 200); };
+$("centered").onchange = () => api("/api/config", {centered_only: $("centered").checked});
+$("colourNames").onchange = () => api("/api/config", {colour_names: $("colourNames").checked});
+$("btnGlossary").onclick = async () => {
+  const g = {}; $("glossary").value.split("\n").forEach(l => { const [a, b] = l.split("="); if (a && b && a.trim() && b.trim()) g[a.trim()] = b.trim(); });
+  await api("/api/config", {glossary: g}); $("glossaryOk").textContent = "✅ تم الحفظ"; setTimeout(() => $("glossaryOk").textContent = "", 2000);
+};
 
+// ---------------------------------------------------------------- calibration
+function calibLabels() {
+  const pct = v => (v > 0 ? "+" : "") + (v * 100).toFixed(1) + "%";
+  $("dxV").textContent = pct(+$("dx").value); $("dyV").textContent = pct(+$("dy").value); $("zoomV").textContent = (+$("zoom").value * 100).toFixed(1) + "%";
+}
+["dx", "dy", "zoom"].forEach(id => $(id).addEventListener("input", () => {
+  calibLabels(); debounce("calib", () => api("/api/config", {calib: {dx: +$("dx").value, dy: +$("dy").value, zoom: +$("zoom").value}, preview: true}), 120);
+}));
+$("btnCalib").onclick = () => api("/api/calib_show", {});
+$("btnCalibReset").onclick = () => { $("dx").value = 0; $("dy").value = 0; $("zoom").value = 1; calibLabels(); api("/api/config", {calib: {dx: 0, dy: 0, zoom: 1}, preview: true}); };
+
+// ---------------------------------------------------------------- history
 function renderHistory(h) {
   const el = $("hist");
-  if (!h.length) { if (!el.querySelector(".hint")) el.innerHTML = '<div class="hint">لسا ما فيه ترجمات.</div>'; return; }
-  if (editing.size) return; // don't redraw while the user is typing
+  if (!h.length) return;
+  if (editing.size) return;
   el.innerHTML = h.map(it => `
     <div class="item" data-id="${it.id}">
       <div class="en">${esc(it.en)}</div>
-      <div class="ar">${it.speaker ? `<b style="color:${esc(state.config.style.speaker || "#F5B841")}">${esc(it.speaker)}:</b> ` : ""}${esc(it.ar)}</div>
-      <div class="meta"><span>${it.t}</span>${it.edited ? '<span class="tag">معدّلة</span>' : ""}<span class="grow"></span>
+      <div class="ar">${it.speaker ? `<b style="color:${esc(state.config.style.speaker)}">${esc(it.speaker)}:</b> ` : ""}${esc(it.ar)}</div>
+      <div class="meta"><span>${it.t}</span>${it.ai ? '<span class="tag ai">ذكية</span>' : ""}${it.edited ? '<span class="tag ed">معدّلة</span>' : ""}<span class="grow"></span>
         <button data-edit="${it.id}">تعديل</button></div>
     </div>`).join("");
   el.querySelectorAll("[data-edit]").forEach(b => b.onclick = () => startEdit(+b.dataset.edit));
 }
-
 function startEdit(id) {
   const item = $("hist").querySelector(`[data-id="${id}"]`); if (!item) return;
   editing.add(id);
-  const ar = item.querySelector(".ar");
-  const it = state.history.find(h => h.id === id); const old = it ? it.ar : ar.textContent;
-  ar.innerHTML = `<textarea>${esc(old)}</textarea><div class="row"><button class="primary">حفظ</button><button>إلغاء</button></div>`;
+  const ar = item.querySelector(".ar"), it = state.history.find(h => h.id === id);
+  ar.innerHTML = `<textarea>${esc(it ? it.ar : "")}</textarea><div class="row"><button class="primary">حفظ</button><button>إلغاء</button></div>`;
   const [save, cancel] = ar.querySelectorAll("button");
   save.onclick = async () => { await api("/api/edit", {id, text: ar.querySelector("textarea").value}); editing.delete(id); poll(); };
   cancel.onclick = () => { editing.delete(id); poll(); };
 }
 
-async function poll() {
-  try { state = await api("/api/state"); } catch (e) { $("pillRun").className = "pill bad"; $("pillRun").textContent = "البرنامج مقفل"; return; }
-  if (!inited) { initControls(state.config); inited = true; loadWindows(); refreshPreview(); }
-  const tv = state.tv;
-  $("pillTv").className = "pill " + (tv.connected ? (tv.overlay === false ? "warn" : "ok") : (tv.ip ? "bad" : ""));
-  $("pillTv").textContent = tv.connected ? ("التلفزيون: " + (tv.name || tv.ip)) : (tv.ip ? "التلفزيون: غير متصل" : "التلفزيون: —");
-  $("tvStatus").innerHTML = tv.connected
-    ? (tv.overlay === false ? '⚠️ متصل، بس التلفزيون ما عنده إذن العرض فوق الشاشة. شوف القسم تحت.' : `✅ متصل بـ <b>${esc(tv.name || tv.ip)}</b>`)
-    : (tv.ip ? `⏳ أحاول الاتصال بـ <code>${esc(tv.ip)}</code>…` : "");
-  $("tvs").innerHTML = (state.discovered || []).map(t =>
-    `<button data-ip="${t.ip}" data-port="${t.port}">📺 ${esc(t.name || "تلفزيون")} — <code>${t.ip}</code></button>`).join("") || $("tvs").innerHTML;
-  $("tvs").querySelectorAll("[data-ip]").forEach(b => b.onclick = () => { $("tvIp").value = b.dataset.ip; api("/api/connect", {ip: b.dataset.ip, port: +b.dataset.port}); });
-
-  $("pillRun").className = "pill " + (state.running ? "ok" : "");
-  $("pillRun").textContent = state.running ? "الترجمة شغّالة" : "متوقف";
-  $("btnRun").textContent = state.running ? "■ إيقاف" : "▶ تشغيل الترجمة";
-  $("btnRun").className = state.running ? "stop big" : "gold big";
-  $("runStatus").textContent = state.status;
-  $("fps").textContent = state.running && state.fps ? `(${state.fps} قراءة/ثانية)` : "";
-  $("err").textContent = state.error || "";
-  renderHistory(state.history);
-  if (state.running && Date.now() % 4000 < 700) refreshPreview();
+// ---------------------------------------------------------------- polling
+function init(c) {
+  buildFonts(); buildPresets(); fillStyle(c.style);
+  $("lang").value = c.source_lang; $("interval").value = c.interval; $("interval").oninput();
+  $("centered").checked = c.centered_only; $("colourNames").checked = c.colour_names !== false;
+  $("aiProvider").value = c.ai.provider || ""; $("aiKey").value = c.ai.key || ""; $("aiModel").value = c.ai.model || ""; $("dialect").value = c.dialect || "msa";
+  $("glossary").value = Object.entries(c.glossary || {}).map(([a, b]) => `${a} = ${b}`).join("\n");
+  const k = c.calib || {dx: 0, dy: 0, zoom: 1}; $("dx").value = k.dx; $("dy").value = k.dy; $("zoom").value = k.zoom; calibLabels();
+  if (c.tv_ip) $("tvIp").value = c.tv_ip;
+  setRegion(c.region);
 }
+async function poll() {
+  try { state = await api("/api/state"); } catch (e) { $("pillRun").className = "pill bad"; $("pillRun").lastChild.textContent = "البرنامج مقفل"; return; }
+  if (!inited) { init(state.config); inited = true; loadWindows(); refreshPreview(); renderLook(); }
+  $("ver").textContent = state.version ? "· الإصدار " + state.version : "";
+  const u = state.update || {}, tv = state.tv, latestTv = (u.latest || {}).tv;
+  const upd = $("update");
+  if (u.status === "downloading" || u.status === "restarting") { upd.style.display = "block"; upd.textContent = "⬇ جاري تحديث البرنامج تلقائياً… بيرجع يفتح لحاله."; }
+  else if (tv.connected && latestTv && tv.version && tv.version < latestTv) { upd.style.display = "block"; upd.innerHTML = `📺 فيه تحديث لبرنامج التلفزيون (${tv.version} ← ${latestTv}). اضغط «تحديث برنامج التلفزيون» وبعدها «تثبيت» على التلفزيون.`; }
+  else upd.style.display = "none";
+
+  const pt = $("pillTv");
+  pt.className = "pill " + (tv.connected ? (tv.overlay === false ? "warn" : "ok") : (tv.ip ? "bad" : ""));
+  pt.lastChild.textContent = tv.connected ? ("التلفزيون: " + (tv.name || tv.ip)) : (tv.ip ? "التلفزيون غير متصل" : "التلفزيون");
+  $("tvStatus").innerHTML = tv.connected
+    ? (tv.overlay === false ? '<span class="err">⚠ متصل، بس التلفزيون ما عنده إذن العرض فوق الشاشة. شوف القسم تحت.</span>' : `<span class="okc">✅ متصل بـ <b>${esc(tv.name || tv.ip)}</b></span>${tv.version ? ` <span class="hint">· إصدار التلفزيون ${tv.version}</span>` : ""}`)
+    : (tv.ip ? `<span class="hint">⏳ أحاول الاتصال بـ <code>${esc(tv.ip)}</code>…</span>` : "");
+  if ((state.discovered || []).length) {
+    $("tvs").innerHTML = state.discovered.map(t => `<button data-ip="${t.ip}" data-port="${t.port}">📺 ${esc(t.name || "تلفزيون")} <code>${t.ip}</code></button>`).join("");
+    $("tvs").querySelectorAll("[data-ip]").forEach(b => b.onclick = () => { $("tvIp").value = b.dataset.ip; api("/api/connect", {ip: b.dataset.ip, port: +b.dataset.port}); });
+  }
+  const pr = $("pillRun"); pr.className = "pill " + (state.running ? "ok" : ""); pr.lastChild.textContent = state.running ? "الترجمة شغّالة" : "متوقف";
+  $("btnRun").textContent = state.running ? "■ إيقاف" : "▶ تشغيل الترجمة"; $("btnRun").className = (state.running ? "stop" : "primary") + " big";
+  $("runStatus").textContent = state.status + (state.has_ai ? " · ترجمة ذكية ✓" : "");
+  $("fps").textContent = state.running && state.fps ? `${state.fps} قراءة في الثانية` : "";
+  $("err").textContent = [state.error, state.ai_error ? "الترجمة الذكية: " + state.ai_error : ""].filter(Boolean).join("\n");
+  renderHistory(state.history);
+  if (state.running && Date.now() % 5000 < 800) refreshPreview();
+}
+window.addEventListener("resize", renderLook);
+const startTab = document.querySelector(`nav button[data-tab="${location.hash.slice(1)}"]`); if (startTab) startTab.click();
 setInterval(poll, 700); poll();
 </script>
 </body>

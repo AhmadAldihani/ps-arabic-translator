@@ -18,48 +18,75 @@ data class NRect(val x: Float, val y: Float, val w: Float, val h: Float)
 }
 
 data class CaptionStyle(
-	/** Text size in pixels on a 1080-line screen; scaled to the real overlay height. */
+	val font: String = "cairo",
+	/** Size the Arabic like the English line it covers (uses the line height the laptop measured). */
+	val autoSize: Boolean = true,
+	val sizeScale: Float = 1f,
+	/** Text size in pixels on a 1080-line screen when [autoSize] is off. */
 	val size: Float = 34f,
-	val fg: Int = 0xFFFFFFFF.toInt(),
-	val bg: Int = 0xFF101018.toInt(),
-	/** 0 = transparent box (text only, with outline), 1 = solid box. */
-	val bgAlpha: Float = 0.88f,
-	/** "sans", "serif" or "condensed". */
-	val font: String = "sans",
 	val bold: Boolean = true,
-	/** "cover" = on top of the game's own subtitle, "bottom" = fixed band at the bottom. */
-	val placement: String = "cover",
-	val radius: Float = 14f,
-	/** Distance from the bottom edge in "bottom" mode, as a fraction of screen height. */
-	val bottomMargin: Float = 0.07f,
-	/** Widest the box may get, as a fraction of screen width. */
-	val maxWidth: Float = 0.86f,
-	val outline: Boolean = true,
+	val fg: Int = 0xFFFFFFFF.toInt(),
+	val bg: Int = 0xFF0B0F1A.toInt(),
+	val bgAlpha: Float = 0.9f,
+	val radius: Float = 12f,
+	val padX: Float = 18f,
+	val padY: Float = 8f,
+	val outline: Boolean = false,
+	val outlineColor: Int = 0xFF000000.toInt(),
+	val outlineWidth: Float = 4f,
+	val shadow: Boolean = true,
+	val lineSpacing: Float = 1.12f,
 	/** Colour of the character name in "Name: line" subtitles. */
-	val speaker: Int = 0xFFF5B841.toInt()
+	val speaker: Int = 0xFFF5B841.toInt(),
+	val speakerBold: Boolean = true,
+	val speakerOwnLine: Boolean = false,
+	/** "cover" = on the game's own subtitle, "bottom"/"top" = fixed band. */
+	val placement: String = "cover",
+	/** "match" = as wide as the English, "fit" = as wide as the Arabic needs. */
+	val widthMode: String = "match",
+	val maxWidth: Float = 0.86f,
+	val bottomMargin: Float = 0.07f
 )
 {
-	fun merge(o: JSONObject): CaptionStyle = CaptionStyle(
-		size = o.optDouble("size", size.toDouble()).toFloat().coerceIn(12f, 120f),
-		fg = o.optString("fg").let { if(it.isEmpty()) fg else Protocol.parseColor(it) ?: fg },
-		bg = o.optString("bg").let { if(it.isEmpty()) bg else Protocol.parseColor(it) ?: bg },
-		bgAlpha = o.optDouble("bgAlpha", bgAlpha.toDouble()).toFloat().coerceIn(0f, 1f),
-		font = o.optString("font", font).ifEmpty { font },
-		bold = o.optBoolean("bold", bold),
-		placement = o.optString("placement", placement).let { if(it == "cover" || it == "bottom") it else placement },
-		radius = o.optDouble("radius", radius.toDouble()).toFloat().coerceIn(0f, 60f),
-		bottomMargin = o.optDouble("bottomMargin", bottomMargin.toDouble()).toFloat().coerceIn(0f, 0.5f),
-		maxWidth = o.optDouble("maxWidth", maxWidth.toDouble()).toFloat().coerceIn(0.2f, 1f),
-		outline = o.optBoolean("outline", outline),
-		speaker = o.optString("speaker").let { if(it.isEmpty()) speaker else Protocol.parseColor(it) ?: speaker }
-	)
+	fun merge(o: JSONObject): CaptionStyle
+	{
+		fun f(k: String, v: Float, lo: Float, hi: Float) = o.optDouble(k, v.toDouble()).toFloat().let { if(it.isNaN()) v else it.coerceIn(lo, hi) }
+		fun c(k: String, v: Int) = o.optString(k).let { if(it.isEmpty()) v else Protocol.parseColor(it) ?: v }
+		fun b(k: String, v: Boolean) = o.optBoolean(k, v)
+		fun e(k: String, v: String, allowed: Set<String>) = o.optString(k, v).let { if(it in allowed) it else v }
+		return CaptionStyle(
+			font = e("font", font, setOf("cairo", "tajawal", "plex", "naskh", "system", "sans", "serif", "condensed")),
+			autoSize = b("autoSize", autoSize),
+			sizeScale = f("sizeScale", sizeScale, 0.3f, 3f),
+			size = f("size", size, 10f, 140f),
+			bold = b("bold", bold),
+			fg = c("fg", fg),
+			bg = c("bg", bg),
+			bgAlpha = f("bgAlpha", bgAlpha, 0f, 1f),
+			radius = f("radius", radius, 0f, 80f),
+			padX = f("padX", padX, 0f, 120f),
+			padY = f("padY", padY, 0f, 80f),
+			outline = b("outline", outline),
+			outlineColor = c("outlineColor", outlineColor),
+			outlineWidth = f("outlineWidth", outlineWidth, 0f, 20f),
+			shadow = b("shadow", shadow),
+			lineSpacing = f("lineSpacing", lineSpacing, 0.8f, 2.2f),
+			speaker = c("speaker", speaker),
+			speakerBold = b("speakerBold", speakerBold),
+			speakerOwnLine = b("speakerOwnLine", speakerOwnLine),
+			placement = e("placement", placement, setOf("cover", "bottom", "top")),
+			widthMode = e("widthMode", widthMode, setOf("match", "fit")),
+			maxWidth = f("maxWidth", maxWidth, 0.2f, 1f),
+			bottomMargin = f("bottomMargin", bottomMargin, 0f, 0.5f)
+		)
+	}
 }
 
 /** One spoken line; [speaker] is the character name, drawn in its own colour. */
 data class CapLine(val speaker: String?, val text: String)
 
-/** One subtitle block on screen and where the game shows it. */
-data class CapItem(val lines: List<CapLine>, val rect: NRect?)
+/** One subtitle block on screen, where the game shows it, and one English line's height (screen fraction). */
+data class CapItem(val lines: List<CapLine>, val rect: NRect?, val lineHeight: Float = 0f)
 
 sealed class Msg
 {
@@ -70,6 +97,7 @@ sealed class Msg
 	data class Style(val patch: JSONObject) : Msg()
 	object Ping : Msg()
 	object Test : Msg()
+	object Update : Msg()
 }
 
 object Protocol
@@ -92,6 +120,7 @@ object Protocol
 			"style" -> Msg.Style(o.optJSONObject("style") ?: o)
 			"ping" -> Msg.Ping
 			"test" -> Msg.Test
+			"update" -> Msg.Update
 			else -> null
 		}
 	}
@@ -126,7 +155,7 @@ object Protocol
 			else if(it.optString("text").isNotBlank())
 				lines.add(CapLine(null, it.optString("text").take(1000)))
 			if(lines.isNotEmpty())
-				out.add(CapItem(lines, parseRect(it)))
+				out.add(CapItem(lines, parseRect(it), it.optDouble("lh", 0.0).toFloat().let { h -> if(h.isNaN()) 0f else h.coerceIn(0f, 0.3f) }))
 		}
 		return out
 	}

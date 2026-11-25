@@ -12,8 +12,9 @@ android {
         minSdk 26
         // 33: no foreground-service type needed; this app is side-loaded, not on Play.
         targetSdk 33
-        versionCode 1
-        versionName "1.0"
+        // The build sets VERSION_CODE (GitHub run number + 100) so every build can update the last one.
+        versionCode((System.getenv("VERSION_CODE") ?: "1").toInteger())
+        versionName "2." + (System.getenv("VERSION_CODE") ?: "0")
     }
 
     buildTypes {

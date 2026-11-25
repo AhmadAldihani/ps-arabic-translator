@@ -71,6 +71,7 @@ class TvLink:
         self.connected = False
         self.tv_name: str | None = None
         self.tv_overlay: bool | None = None
+        self.tv_version: int | None = None
         self.last_error: str | None = None
         self._sock: socket.socket | None = None
         self._lock = threading.RLock()  # re-entrant: on_connect may call send()
@@ -116,6 +117,7 @@ class TvLink:
             info = json.loads(reply) if reply else {}
             self.tv_name = info.get("name")
             self.tv_overlay = info.get("overlay")
+            self.tv_version = info.get("version")
             s.settimeout(None)
             self._sock = s
             self.connected = True
@@ -153,6 +155,8 @@ class TvLink:
                     continue
                 if "overlay" in info:
                     self.tv_overlay = info["overlay"]
+                if "version" in info:
+                    self.tv_version = info["version"]
         except OSError:
             pass
         with self._lock:
