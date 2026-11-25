@@ -1,4 +1,5 @@
 # Installs the latest released APK on an Android emulator, opens it,
+# (API 30 x86_64 images can run ARM apps)
 # and saves any crash log so problems can be fixed without a cable to the TV.
 name: Test on emulator
 
@@ -41,7 +42,7 @@ jobs:
 
       - uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 33
+          api-level: 30
           arch: x86_64
           target: google_apis
           disable-animations: true
