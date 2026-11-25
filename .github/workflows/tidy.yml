@@ -1,0 +1,35 @@
+# If the project folder is uploaded one level too deep (tarjem-upload/tarjem/...),
+# move it into tarjem/ and start the build.
+name: Tidy upload
+
+on:
+  push:
+    branches: [main]
+    paths: ["tarjem-upload/**"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  tidy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Move tarjem-upload/tarjem into tarjem
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if [ -d tarjem-upload/tarjem ]; then
+            mkdir -p tarjem
+            cp -r tarjem-upload/tarjem/. tarjem/
+            git rm -r -q tarjem-upload
+            git add tarjem
+            git commit -m "Move uploaded files into tarjem/"
+            git push
+          fi
+      - name: Start the build
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run tarjem.yml --ref main -R ${{ github.repository }}
