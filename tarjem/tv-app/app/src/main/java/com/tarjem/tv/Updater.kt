@@ -109,6 +109,7 @@ object Updater
 			try { context.startActivity(i) } catch(_: Exception) { }
 			return false
 		}
+		pauseOverlay(context)
 		status = "installing"
 		val installer = context.packageManager.packageInstaller
 		val params = PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL)
@@ -127,6 +128,13 @@ object Updater
 		}
 		return true
 	}
+
+	/** Take the caption layer off the screen for a while, or Android blocks the Update button. */
+	fun pauseOverlay(context: Context)
+	{
+		TvState.overlayPausedUntil = System.currentTimeMillis() + 120_000
+		OverlayService.start(context, OverlayService.ACTION_HIDE)
+	}
 }
 
 class InstallReceiver : BroadcastReceiver()
@@ -139,10 +147,12 @@ class InstallReceiver : BroadcastReceiver()
 				@Suppress("DEPRECATION")
 				val confirm = intent.getParcelableExtra<Intent>(Intent.EXTRA_INTENT)
 				confirm?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+				Updater.pauseOverlay(context)
 				try { context.startActivity(confirm) } catch(_: Exception) { }
 			}
 			PackageInstaller.STATUS_SUCCESS -> Updater.status = "up_to_date"
 			else -> {
+				TvState.overlayPausedUntil = 0L
 				Updater.status = "error"
 				Updater.error = intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE)
 			}
