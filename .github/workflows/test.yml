@@ -4,10 +4,7 @@
 name: Test on emulator
 
 on:
-  workflow_dispatch:
-  workflow_run:
-    workflows: ["Build TV app"]
-    types: [completed]
+  workflow_dispatch:   # old Remote Play version; run by hand only
 
 jobs:
   test:
