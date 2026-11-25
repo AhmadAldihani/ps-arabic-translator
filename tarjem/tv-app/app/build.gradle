@@ -17,7 +17,20 @@ android {
         versionName "2." + (System.getenv("VERSION_CODE") ?: "0")
     }
 
+    // One fixed key for every build (repo root signing.keystore), so each update installs over the last one.
+    signingConfigs {
+        stable {
+            storeFile rootProject.file("../../signing.keystore")
+            storePassword "android"
+            keyAlias "androiddebugkey"
+            keyPassword "android"
+        }
+    }
+
     buildTypes {
+        debug {
+            signingConfig signingConfigs.stable
+        }
         release {
             minifyEnabled false
         }
