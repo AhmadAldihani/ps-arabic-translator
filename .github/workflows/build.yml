@@ -25,6 +25,7 @@ jobs:
           git checkout "$CHIAKI_COMMIT"
           git submodule update --init --recursive third-party/nanopb third-party/jerasure third-party/gf-complete third-party/curl third-party/cpp-steam-tools android/app/src/main/cpp/oboe
           git apply --whitespace=nowarn ../translator.patch
+          for p in ../fix-*.patch; do [ -f "$p" ] && git apply --whitespace=nowarn "$p" && echo "applied $p"; done
 
       - uses: actions/setup-java@v4
         with:
