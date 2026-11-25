@@ -46,6 +46,7 @@ class Box:
 class Line:
     text: str
     box: Box
+    words: tuple = ()   # tuple[Line, ...] — each word with its own box, when the OCR gives them
 
 
 @dataclass(frozen=True)
@@ -53,6 +54,7 @@ class Subtitle:
     text: str   # what gets translated
     key: str    # normalised, for "same subtitle?" checks
     box: Box    # union of its lines, in the same pixels as the input
+    line_height: float = 0.0  # average height of one English line, same pixels
 
     @property
     def utterances(self) -> list[tuple[str | None, str]]:
@@ -149,11 +151,11 @@ def _to_subtitle(g: list[Line]) -> Subtitle | None:
     box = g[0].box
     for l in g[1:]:
         box = box.union(l.box)
-    return Subtitle(text, key, box)
+    return Subtitle(text, key, box, sum(l.box.height for l in g) / len(g))
 
 
 def _groups(raw: list[Line], width: float, height: float, centered_only: bool) -> list[list[Line]]:
-    lines = [Line(clean_line(l.text), l.box) for l in raw]
+    lines = [Line(clean_line(l.text), l.box, l.words) for l in raw]
     lines = [l for l in lines if useful(l.text, l.box, width, height, centered_only)]
     lines.sort(key=lambda l: l.box.top)
     groups: list[list[Line]] = []

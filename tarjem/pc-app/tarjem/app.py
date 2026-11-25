@@ -1,4 +1,4 @@
-"""Tarjem for Windows: a small local web app (opens in your browser) that drives everything."""
+"""Tarjemni (ترجمني) for Windows: a small local web app (opens in your browser) that drives everything."""
 from __future__ import annotations
 
 import json
@@ -10,13 +10,16 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 from . import adb, capture
-from .config import Config, apply_calib, load_overrides, save_overrides
+from .config import PRESETS, Config, apply_calib, data_dir, load_overrides, save_overrides
 from .engine import Engine
-from .translate import Translator
+from .translate import Translator, ai_translate
 from .tvlink import SERVER_PORT, TvLink, discover
+from .updater import Updater
+from .version import VERSION
 
-VERSION = "1.0"
 UI_PORT = 47880
+FONT_FILES = {"cairo": "cairo.ttf", "tajawal": "tajawal-bold.ttf", "tajawal-regular": "tajawal-regular.ttf",
+              "plex": "plex-bold.ttf", "plex-regular": "plex-regular.ttf", "naskh": "naskh.ttf"}
 
 
 def resource(name: str) -> Path:
@@ -34,12 +37,25 @@ class App:
     def __init__(self, ocr_factory=default_ocr_factory):
         self.cfg = Config()
         self.tv = TvLink(client_name=socket.gethostname()[:40] or "laptop")
-        self.translator = Translator(load_overrides(), on_overrides_changed=save_overrides)
+        self.translator = Translator(load_overrides(), on_overrides_changed=save_overrides,
+                                     cache_file=data_dir() / "translations.json")
+        self.apply_translation_settings()
         self.engine = Engine(self.cfg, self.tv, self.translator, ocr_factory)
+        self.updater = Updater()
         self.last_discovery: list[dict] = []
         self.adb_log = ""
         if self.cfg.data.get("tv_ip"):
             self.connect(self.cfg.data["tv_ip"])
+
+    def apply_translation_settings(self):
+        ai = self.cfg.data["ai"]
+        if ai.get("provider") in ("gemini", "claude") and ai.get("key"):
+            provider, key, model = ai["provider"], ai["key"], ai.get("model", "")
+            self.translator.set_ai(lambda system, user: ai_translate(provider, key, model, system, user))
+        else:
+            self.translator.set_ai(None)
+        self.translator.dialect = self.cfg.data.get("dialect", "msa")
+        self.translator.glossary = dict(self.cfg.data.get("glossary", {}))
 
     def connect(self, ip: str, port: int = SERVER_PORT):
         ip = ip.strip()
@@ -66,10 +82,15 @@ class App:
         s = self.engine.snapshot()
         s.update({
             "version": VERSION,
+            "update": self.updater.state(),
+            "presets": list(PRESETS),
+            "ai_error": self.translator.last_ai_error,
+            "has_ai": self.translator.has_ai,
             "config": self.cfg.data,
             "tv": {
                 "ip": self.tv.host, "connected": self.tv.connected, "name": self.tv.tv_name,
                 "overlay": self.tv.tv_overlay, "error": None if self.tv.connected else self.tv.last_error,
+                "version": self.tv.tv_version,
             },
             "discovered": self.last_discovery,
             "adb_log": self.adb_log,
@@ -88,6 +109,10 @@ class App:
             return {"ok": True}
         if path == "/api/config":
             self.cfg.update(body)
+            if {"ai", "dialect", "glossary"} & set(body):
+                self.apply_translation_settings()
+            if "preset" in body:
+                body = {**body, "style": self.cfg.data["style"]}
             if "style" in body:
                 self.push_style()
             if "style" in body or "calib" in body:
@@ -95,6 +120,20 @@ class App:
             if "calib" in body and body.get("preview"):
                 self.calib_preview()
             return {"ok": True}
+        if path == "/api/ai_test":
+            self.apply_translation_settings()
+            if not self.translator.has_ai:
+                return {"ok": False, "error": "اختر المزوّد واكتب المفتاح"}
+            from .translate import build_prompt
+            system, user = build_prompt("Hold up, Lucia. We ain't done yet.", "Jason", [], self.translator.glossary,
+                                        self.translator.dialect)
+            try:
+                ai = self.cfg.data["ai"]
+                return {"ok": True, "text": ai_translate(ai["provider"], ai["key"], ai.get("model", ""), system, user)}
+            except Exception as e:  # noqa: BLE001
+                return {"ok": False, "error": f"{type(e).__name__}: {e}"[:300]}
+        if path == "/api/tv_update":
+            return {"ok": self.tv.send({"t": "update"})}
         if path == "/api/calib_show":
             return {"ok": self.calib_preview()}
         if path == "/api/start":
@@ -105,9 +144,10 @@ class App:
             return {"ok": True}
         if path == "/api/test":
             self.push_style()
-            ok = self.tv.send({"t": "show", "ttl": 6000, "items": [
-                {"rect": None, "lines": [{"s": "جيسون", "t": "توقفي يا لوسيا!"},
-                                          {"t": "هذي تجربة للترجمة العربية ✓"}]}]})
+            ok = self.tv.send({"t": "show", "ttl": 7000, "items": [
+                {"rect": [0.3, 0.72, 0.4, 0.045], "lh": 0.04, "lines": [{"s": "جيسون", "t": "توقفي يا لوسيا!"}]},
+                {"rect": [0.25, 0.80, 0.5, 0.09], "lh": 0.04, "lines": [{"s": "لوسيا", "t": "ما راح أوقف، لازم نخلص الحين."},
+                                                                         {"t": "هذي تجربة للترجمة العربية ✓"}]}]})
             return {"ok": ok}
         if path == "/api/edit":
             return {"ok": self.engine.edit(int(body.get("id", 0)), str(body.get("text", "")))}
@@ -158,6 +198,13 @@ def make_handler(app: App):
                 self._send(200, resource("ui.html").read_bytes(), "text/html; charset=utf-8")
             elif path == "/api/state":
                 self._json(app.state())
+            elif path.startswith("/fonts/"):
+                name = path.rsplit("/", 1)[-1].removesuffix(".ttf")
+                f = resource("fonts/" + FONT_FILES.get(name, "none"))
+                if f.exists():
+                    self._send(200, f.read_bytes(), "font/ttf")
+                else:
+                    self._json({"error": "no font"}, 404)
             elif path == "/api/selftest":
                 self._json(selftest())
             elif path == "/api/windows":
@@ -211,10 +258,11 @@ def main():
         return 1
     url = f"http://127.0.0.1:{server.server_address[1]}/"
     print("=" * 60)
-    print(f" Tarjem {VERSION} — Arabic subtitles for PlayStation")
+    print(f" Tarjemni (ترجمني) v{VERSION} — Arabic subtitles for PlayStation")
     print(f" Interface: {url}")
     print(" Keep this window open while you play. Close it to quit.")
     print("=" * 60)
+    app.updater.check_async(lambda: not app.engine.running)
     if "--no-browser" not in sys.argv:
         threading.Timer(0.8, lambda: webbrowser.open(url)).start()
     try:
@@ -223,6 +271,7 @@ def main():
         pass
     finally:
         app.engine.stop()
+        app.translator.save()
         app.tv.close()
     return 0
 

@@ -1,4 +1,4 @@
-"""Settings saved in %APPDATA%\\Tarjem (or ~/.tarjem elsewhere)."""
+"""Settings saved in %APPDATA%\\Tarjemni (or ~/.tarjemni elsewhere)."""
 from __future__ import annotations
 
 import json
@@ -6,28 +6,72 @@ import os
 import threading
 from pathlib import Path
 
+from .translate import GTA6_GLOSSARY
+
+STYLE_DEFAULTS = {
+    "font": "cairo",            # cairo | tajawal | plex | naskh | system
+    "autoSize": True,           # match the English subtitle's size
+    "sizeScale": 1.0,           # x the English size when autoSize
+    "size": 34,                 # px on a 1080p screen when not autoSize
+    "bold": True,
+    "fg": "#FFFFFF",
+    "bg": "#0B0F1A",
+    "bgAlpha": 0.9,
+    "radius": 12,
+    "padX": 18,
+    "padY": 8,
+    "outline": False,
+    "outlineColor": "#000000",
+    "outlineWidth": 4,
+    "shadow": True,
+    "lineSpacing": 1.12,
+    "speaker": "#F5B841",
+    "speakerBold": True,
+    "speakerOwnLine": False,
+    "placement": "cover",       # cover | bottom | top
+    "widthMode": "match",       # match (as wide as the English) | fit (as wide as the Arabic)
+    "maxWidth": 0.86,
+    "bottomMargin": 0.07,
+}
+
+PRESETS = {
+    "classic": {"font": "cairo", "fg": "#FFFFFF", "bg": "#0B0F1A", "bgAlpha": 0.9, "radius": 12, "outline": False, "shadow": True, "speaker": "#F5B841"},
+    "cinema": {"font": "tajawal", "fg": "#FFFFFF", "bg": "#000000", "bgAlpha": 0.0, "outline": True, "outlineWidth": 5, "outlineColor": "#000000", "shadow": True, "speaker": "#FFD54A"},
+    "netflix": {"font": "plex", "fg": "#FFFFFF", "bg": "#000000", "bgAlpha": 0.6, "radius": 4, "outline": False, "shadow": True, "speaker": "#E50914"},
+    "gta": {"font": "cairo", "fg": "#FFFFFF", "bg": "#1A0B2E", "bgAlpha": 0.85, "radius": 16, "outline": False, "shadow": True, "speaker": "#FF5FA2"},
+    "yellow": {"font": "naskh", "fg": "#FFE14D", "bg": "#000000", "bgAlpha": 0.55, "radius": 8, "outline": True, "outlineWidth": 3, "speaker": "#7FE3FF"},
+}
+
 DEFAULTS = {
     "tv_ip": "",
     "window_title": "",
     # Where to look for subtitles: [x, y, w, h] as fractions of the game picture.
-    "region": [0.10, 0.70, 0.80, 0.28],
-    "interval": 0.3,
+    "region": [0.10, 0.62, 0.80, 0.36],
+    "interval": 0.15,
     "source_lang": "en",
     "centered_only": True,
+    "colour_names": True,       # detect a name shown in a different colour
     # Fine alignment of the Arabic box with the TV picture (TV overscan etc.).
     "calib": {"dx": 0.0, "dy": 0.0, "zoom": 1.0},
-    "style": {
-        "size": 34, "fg": "#FFFFFF", "bg": "#101018", "bgAlpha": 0.88, "font": "sans",
-        "bold": True, "placement": "cover", "radius": 14, "bottomMargin": 0.07, "maxWidth": 0.86,
-        "outline": True, "speaker": "#F5B841",
-    },
+    "style": dict(STYLE_DEFAULTS),
+    "ai": {"provider": "", "key": "", "model": ""},   # provider: "" | gemini | claude
+    "dialect": "msa",
+    "glossary": dict(GTA6_GLOSSARY),
 }
 
 
 def data_dir() -> Path:
     base = os.environ.get("APPDATA")
-    d = Path(base) / "Tarjem" if base else Path.home() / ".tarjem"
+    d = Path(base) / "Tarjemni" if base else Path.home() / ".tarjemni"
     d.mkdir(parents=True, exist_ok=True)
+    # carry over settings from the first version (Tarjem)
+    old = Path(base) / "Tarjem" if base else Path.home() / ".tarjem"
+    if old.exists() and not (d / "config.json").exists():
+        for name in ("config.json", "corrections.json"):
+            try:
+                (d / name).write_bytes((old / name).read_bytes())
+            except OSError:
+                pass
     return d
 
 
@@ -45,6 +89,9 @@ class Config:
     def update(self, patch: dict, save: bool = True):
         with self._lock:
             for k, v in patch.items():
+                if k == "preset" and v in PRESETS:
+                    self.data["style"].update(PRESETS[v])
+                    continue
                 if k not in DEFAULTS:
                     continue
                 if k == "calib" and isinstance(v, dict):
@@ -53,7 +100,11 @@ class Config:
                     c["dy"] = min(max(float(v.get("dy", c["dy"])), -0.2), 0.2)
                     c["zoom"] = min(max(float(v.get("zoom", c["zoom"])), 0.8), 1.2)
                 elif k == "style" and isinstance(v, dict):
-                    self.data["style"].update({sk: sv for sk, sv in v.items() if sk in DEFAULTS["style"]})
+                    self.data["style"].update({sk: sv for sk, sv in v.items() if sk in STYLE_DEFAULTS})
+                elif k == "ai" and isinstance(v, dict):
+                    self.data["ai"].update({ak: str(av).strip() for ak, av in v.items() if ak in ("provider", "key", "model")})
+                elif k == "glossary" and isinstance(v, dict):
+                    self.data["glossary"] = {str(a).strip(): str(b).strip() for a, b in v.items() if str(a).strip() and str(b).strip()}
                 elif k == "region":
                     if isinstance(v, (list, tuple)) and len(v) == 4:
                         x, y, w, h = (float(t) for t in v)
@@ -61,7 +112,7 @@ class Config:
                         w, h = min(max(w, 0.05), 1.0 - x), min(max(h, 0.04), 1.0 - y)
                         self.data["region"] = [round(x, 4), round(y, 4), round(w, 4), round(h, 4)]
                 elif k == "interval":
-                    self.data[k] = min(max(float(v), 0.15), 2.0)
+                    self.data[k] = min(max(float(v), 0.08), 2.0)
                 else:
                     self.data[k] = v
             if save:

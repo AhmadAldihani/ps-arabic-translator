@@ -12,6 +12,7 @@ from PIL import Image
 from . import capture
 from .config import Config, apply_calib
 from .extract import Subtitle, extract_all, similarity
+from .speaker import mark_coloured_speaker
 from .tvlink import TvLink
 from .translate import Translator
 
@@ -24,9 +25,10 @@ TTL_MS = 4000
 class Block:
     """One subtitle block as read from the game, ready to be (re)translated and drawn."""
 
-    def __init__(self, sub: Subtitle, rect: list[float]):
+    def __init__(self, sub: Subtitle, rect: list[float], line_h: float = 0.0):
         self.sub = sub
-        self.rect = rect  # fractions of the game picture
+        self.rect = rect      # fractions of the game picture
+        self.line_h = line_h  # one English line's height, fraction of the game picture
         self.utterances = sub.utterances
 
 
@@ -167,6 +169,8 @@ class Engine:
         crop = game.crop((x0, y0, x1, y1))
 
         lines = self._ocr.read(crop)
+        if self.cfg.data.get("colour_names", True):
+            lines = [mark_coloured_speaker(crop, l) for l in lines]
         subs = extract_all(lines, crop.width, gh, bool(self.cfg.data.get("centered_only", True)))
         self.status = "شغّال" if self.tv.connected else "شغّال — بس التلفزيون مو متصل"
         self.error = None
@@ -181,8 +185,8 @@ class Engine:
             return
         self._misses = 0
 
-        blocks = [Block(s, [(x0 + s.box.left) / gw, (y0 + s.box.top) / gh, s.box.width / gw, s.box.height / gh])
-                  for s in subs]
+        blocks = [Block(s, [(x0 + s.box.left) / gw, (y0 + s.box.top) / gh, s.box.width / gw, s.box.height / gh],
+                        s.line_height / gh) for s in subs]
         key = " || ".join(s.key for s in subs)
 
         if self._shown_key is not None and similarity(key, self._shown_key) >= SAME_SIMILARITY:
@@ -191,31 +195,63 @@ class Engine:
                 self._last_keep = time.time()
             return
 
-        candidate, self._candidate = self._candidate, key
-        if candidate is None or similarity(key, candidate) < STABLE_SIMILARITY:
-            return  # wait one more read: skips fades and typewriter text
-
+        # Show straight away (no waiting for a second read): lines seen before come from the cache
+        # instantly, and a half-faded read is simply replaced on the next scan.
+        self._candidate = key
         self._shown_key = key
         self._shown_blocks = blocks
         self._shown_ready = False
         self._pool.submit(self._translate_and_send, blocks, key, True)
 
     def _translate_and_send(self, blocks: list[Block], key: str | None, record: bool):
+        """Stage 1: fastest translation (cache/Google) right away. Stage 2: the AI's natural
+        translation replaces it in place when it arrives (if an AI key is set)."""
         try:
-            # Translate every spoken line (and each character name) in parallel; the cache
-            # makes names and repeated lines instant.
-            jobs = []
-            for b in blocks:
-                for sp, body in b.utterances:
-                    jobs.append((sp, body, self._tpool.submit(self.translator.translate, body),
-                                 self._tpool.submit(self.translator.translate, sp) if sp else None))
-            results = [(sp, body, f.result(timeout=15), (g.result(timeout=15) if g else None)) for sp, body, f, g in jobs]
+            quick = self._translate_all(blocks, refine=False)
         except Exception as e:  # noqa: BLE001
             self.error = f"الترجمة: {e}"
             if self._shown_key == key:
                 self._shown_key = None  # retry on the next read
             return
+        if self._shown_key != key:
+            return
+        self._send_items(blocks, quick)
+        self._shown_ready = True
+        if record:
+            for sp, body, ar, sp_ar in quick:
+                self._remember(sp, body, ar, sp_ar)
 
+        if not self.translator.has_ai or all(self.translator.has_best(body) for _, body, _, _ in quick):
+            for _, body, ar, _ in quick:
+                self.translator.remember_context(body, ar)
+            return
+        try:
+            best = self._translate_all(blocks, refine=True)
+        except Exception as e:  # noqa: BLE001
+            self.error = f"الترجمة الذكية: {e}"
+            return
+        for (_, body, ar, _), (_, _, ar_q, _) in zip(best, quick):
+            self.translator.remember_context(body, ar)
+            if ar != ar_q:
+                self._update_history(body, ar)
+        if self._shown_key == key and [r[2] for r in best] != [r[2] for r in quick]:
+            self._send_items(blocks, best)
+
+    def _translate_all(self, blocks: list[Block], refine: bool) -> list[tuple]:
+        jobs = []
+        for b in blocks:
+            for sp, body in b.utterances:
+                if refine:
+                    f = self._tpool.submit(lambda t=body, s=sp: self.translator.refine(t, s) or self.translator.translate(t))
+                else:
+                    f = self._tpool.submit(self.translator.translate, body)
+                g = self._tpool.submit(self.translator.name, sp) if sp else None
+                jobs.append((sp, body, f, g))
+        return [(sp, body, f.result(timeout=20), (g.result(timeout=20) if g else None)) for sp, body, f, g in jobs]
+
+    def _send_items(self, blocks: list[Block], results: list[tuple]):
+        calib = self.cfg.data["calib"]
+        zoom = float(calib.get("zoom", 1))
         items, i = [], 0
         for b in blocks:
             lines = []
@@ -224,16 +260,19 @@ class Engine:
                 i += 1
                 if ar:
                     lines.append({"s": sp_ar or sp, "t": ar} if sp else {"t": ar})
-                if record:
-                    self._remember(sp, body, ar, sp_ar)
             if lines:
-                items.append({"rect": apply_calib(b.rect, self.cfg.data["calib"]), "lines": lines})
+                items.append({"rect": apply_calib(b.rect, calib), "lh": round(b.line_h * zoom, 4), "lines": lines})
+        if items:
+            self.tv.send({"t": "show", "items": items, "ttl": TTL_MS})
+            self._last_keep = time.time()
 
-        if self._shown_key != key or not items:
-            return
-        self._shown_ready = True
-        self.tv.send({"t": "show", "items": items, "ttl": TTL_MS})
-        self._last_keep = time.time()
+    def _update_history(self, body: str, ar: str):
+        with self._lock:
+            for h in self.history:
+                if h["src"] == body and not h.get("edited"):
+                    h["ar"] = ar
+                    h["ai"] = True
+                    break
 
     def _remember(self, sp: str | None, body: str, ar: str, sp_ar: str | None):
         with self._lock:
