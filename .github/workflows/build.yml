@@ -41,8 +41,11 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Python tools for nanopb
-        run: pip install protobuf grpcio-tools
+      - name: protoc and Python tools for nanopb
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q protobuf-compiler
+          pip install protobuf grpcio-tools
 
       - name: Use the repo's signing key
         run: |
