@@ -16,6 +16,8 @@ import java.net.ServerSocket
 import java.net.Socket
 import java.net.SocketException
 import java.util.Collections
+import java.util.concurrent.Executors
+import java.util.concurrent.RejectedExecutionException
 
 private const val TAG = "TarjemNet"
 
@@ -24,14 +26,21 @@ class Client(private val socket: Socket)
 {
 	@Volatile var name: String = socket.inetAddress.hostAddress ?: "?"
 	private val out = PrintWriter(OutputStreamWriter(socket.getOutputStream(), Charsets.UTF_8), true)
+	// Android forbids network writes on the main thread, and replies are sent from there.
+	private val writer = Executors.newSingleThreadExecutor()
 
 	fun send(line: String)
 	{
-		synchronized(out) { out.println(line) }
+		try
+		{
+			writer.execute { try { out.println(line) } catch(_: Exception) { } }
+		}
+		catch(_: RejectedExecutionException) { }
 	}
 
 	fun close()
 	{
+		writer.shutdownNow()
 		try { socket.close() } catch(_: Exception) { }
 	}
 }
