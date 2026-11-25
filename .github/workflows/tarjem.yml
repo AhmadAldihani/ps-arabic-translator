@@ -1,0 +1,142 @@
+# Builds both parts of Tarjem and publishes them as one release:
+#   tarjem-tv.apk        -> install on the Android TV with Downloader
+#   Tarjem-Windows.zip   -> unzip and run Tarjem.exe on the laptop
+name: Build Tarjem
+
+on:
+  push:
+    branches: [main]
+    paths: ["tarjem/**"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  tv:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: 17 }
+      - uses: gradle/actions/setup-gradle@v4
+        with: { gradle-version: "8.11.1" }
+      - name: Signing key (same key every build, so updates install over the old app)
+        run: mkdir -p ~/.android && cp signing.keystore ~/.android/debug.keystore
+      - name: Build and unit test
+        run: gradle -p tarjem/tv-app --no-daemon testDebugUnitTest assembleDebug
+      - run: cp tarjem/tv-app/app/build/outputs/apk/debug/app-debug.apk tarjem-tv.apk
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Write emulator test
+        run: |
+          cat > tv-test.sh <<'SH'
+          set -x
+          adb install -r tarjem-tv.apk
+          adb shell appops set com.tarjem.tv SYSTEM_ALERT_WINDOW allow
+          adb logcat -c
+          adb shell am start -W -n com.tarjem.tv/.MainActivity
+          sleep 6
+          adb forward tcp:47800 tcp:47800
+          python3 - <<'PY'
+          import json, socket, time
+          s = socket.create_connection(("127.0.0.1", 47800), timeout=10)
+          f = s.makefile("rw", encoding="utf-8")
+          def send(m): f.write(json.dumps(m, ensure_ascii=False) + "\n"); f.flush()
+          send({"t": "hello", "name": "ci"}); print("welcome:", f.readline().strip())
+          send({"t": "style", "style": {"size": 40, "fg": "#FFFF00"}}); print("style:", f.readline().strip())
+          send({"t": "show", "text": "اركب السيارة الحين!", "rect": [0.3, 0.82, 0.4, 0.08], "ttl": 20000})
+          time.sleep(3)
+          PY
+          adb shell input keyevent KEYCODE_HOME
+          sleep 2
+          echo "=== OVERLAY WINDOW ==="; adb shell dumpsys window windows | grep -i -A3 "TarjemCaptions" | head -20 || true
+          echo "=== PROCESS ==="; adb shell pidof com.tarjem.tv || echo "NOT RUNNING"
+          echo "=== CRASHES ==="; adb logcat -d -b crash
+          adb exec-out screencap -p > tv-screen.png
+          adb shell dumpsys window windows | grep -q TarjemCaptions && echo "OVERLAY_OK" || (echo "OVERLAY_MISSING"; exit 1)
+          SH
+          chmod +x tv-test.sh
+      - name: Test on an Android emulator (overlay over the home screen)
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 33
+          arch: x86_64
+          target: google_apis
+          disable-animations: true
+          script: ./tv-test.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: tv
+          path: |
+            tarjem-tv.apk
+            tv-screen.png
+
+  pc:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: tarjem/pc-app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pyinstaller pytest
+      - name: Tests (including real Windows OCR)
+        run: python -m pytest -q tests
+      - name: Build Tarjem.exe
+        run: pyinstaller --noconfirm --onefile --name Tarjem --add-data "tarjem/ui.html;tarjem" --collect-all winrt run_tarjem.py
+      - name: Add adb (for granting the TV permission from the laptop)
+        shell: pwsh
+        run: |
+          Invoke-WebRequest https://dl.google.com/android/repository/platform-tools-latest-windows.zip -OutFile pt.zip
+          Expand-Archive pt.zip -DestinationPath pt
+          New-Item -ItemType Directory -Force dist/adb | Out-Null
+          Copy-Item pt/platform-tools/adb.exe, pt/platform-tools/AdbWinApi.dll, pt/platform-tools/AdbWinUsbApi.dll dist/adb/
+          Copy-Item pt/platform-tools/NOTICE.txt dist/adb/ -ErrorAction SilentlyContinue
+      - name: Smoke test the packaged exe
+        shell: pwsh
+        run: |
+          $p = Start-Process -FilePath dist/Tarjem.exe -ArgumentList "--no-browser" -PassThru
+          Start-Sleep -Seconds 12
+          $state = Invoke-RestMethod http://127.0.0.1:47880/api/state
+          Write-Host "state: running=$($state.running) version=$($state.version)"
+          $ui = (Invoke-WebRequest http://127.0.0.1:47880/ -UseBasicParsing).Content
+          if ($ui -notmatch "api/state") { throw "UI not served" }
+          $self = Invoke-RestMethod http://127.0.0.1:47880/api/selftest
+          Write-Host "selftest: $($self | ConvertTo-Json -Compress)"
+          Stop-Process -Id $p.Id -Force
+          if (-not $self.ocr_ok) { throw "OCR self-test failed inside the exe" }
+      - name: Zip
+        shell: pwsh
+        run: Compress-Archive -Path dist/Tarjem.exe, dist/adb -DestinationPath ../../Tarjem-Windows.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pc
+          path: Tarjem-Windows.zip
+
+  release:
+    needs: [tv, pc]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: tarjem-${{ github.run_number }}
+          name: ترجم ${{ github.run_number }}
+          body: |
+            التلفزيون (Downloader): https://github.com/${{ github.repository }}/releases/latest/download/tarjem-tv.apk
+            اللابتوب: https://github.com/${{ github.repository }}/releases/latest/download/Tarjem-Windows.zip
+          files: |
+            tv/tarjem-tv.apk
+            pc/Tarjem-Windows.zip
+          make_latest: true
