@@ -1,6 +1,7 @@
-# Builds both parts of Tarjem and publishes them as one release:
-#   tarjem-tv.apk        -> install on the Android TV with Downloader
-#   Tarjem-Windows.zip   -> unzip and run Tarjem.exe on the laptop
+# Builds both parts of Tarjemni (ترجمني) and publishes them as one release:
+#   tarjemni-tv.apk        -> Android TV (updates itself from here)
+#   Tarjemni-Windows.zip   -> laptop (updates itself from here)
+#   version.json           -> what the apps compare against to auto-update
 name: Build Tarjem
 
 on:
@@ -11,6 +12,9 @@ on:
 
 permissions:
   contents: write
+
+env:
+  VERSION_CODE: ${{ github.run_number }}00
 
 jobs:
   tv:
@@ -26,7 +30,7 @@ jobs:
         run: mkdir -p ~/.android && cp signing.keystore ~/.android/debug.keystore
       - name: Build and unit test
         run: gradle -p tarjem/tv-app --no-daemon testDebugUnitTest assembleDebug
-      - run: cp tarjem/tv-app/app/build/outputs/apk/debug/app-debug.apk tarjem-tv.apk
+      - run: cp tarjem/tv-app/app/build/outputs/apk/debug/app-debug.apk tarjemni-tv.apk
       - name: Enable KVM
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
@@ -36,32 +40,36 @@ jobs:
         run: |
           cat > tv-test.sh <<'SH'
           set -x
-          adb install -r tarjem-tv.apk
+          adb shell wm size 1920x1080
+          adb shell wm density 320
+          adb install -r tarjemni-tv.apk
           adb shell appops set com.tarjem.tv SYSTEM_ALERT_WINDOW allow
           adb logcat -c
           adb shell am start -W -n com.tarjem.tv/.MainActivity
           sleep 6
+          adb exec-out screencap -p > tv-app.png
           adb forward tcp:47800 tcp:47800
+          adb shell input keyevent KEYCODE_HOME
+          sleep 2
           python3 - <<'PY'
           import json, socket, time
           s = socket.create_connection(("127.0.0.1", 47800), timeout=10)
           f = s.makefile("rw", encoding="utf-8")
           def send(m): f.write(json.dumps(m, ensure_ascii=False) + "\n"); f.flush()
           send({"t": "hello", "name": "ci"}); print("welcome:", f.readline().strip())
-          send({"t": "style", "style": {"size": 40, "fg": "#FFFF00"}}); print("style:", f.readline().strip())
-          send({"t": "show", "text": "اركب السيارة الحين!", "rect": [0.3, 0.82, 0.4, 0.08], "ttl": 20000})
+          send({"t": "style", "style": {"font": "cairo", "speaker": "#F5B841", "outline": True, "outlineWidth": 3}}); print("style:", f.readline().strip())
+          send({"t": "show", "ttl": 30000, "items": [
+            {"rect": [0.33, 0.70, 0.34, 0.04], "lh": 0.04, "lines": [{"s": "جيسون", "t": "توقفي يا لوسيا!"}]},
+            {"rect": [0.28, 0.76, 0.44, 0.04], "lh": 0.04, "lines": [{"s": "لوسيا", "t": "ما راح أوقف، لازم نخلص الشغلة الحين قبل لا توصل الشرطة."}]}]})
           time.sleep(3)
           PY
-          adb shell input keyevent KEYCODE_HOME
-          sleep 2
-          echo "=== OVERLAY WINDOW ==="; adb shell dumpsys window windows | grep -i -A3 "TarjemCaptions" | head -20 || true
-          echo "=== PROCESS ==="; adb shell pidof com.tarjem.tv || echo "NOT RUNNING"
-          echo "=== CRASHES ==="; adb logcat -d -b crash
           adb exec-out screencap -p > tv-screen.png
+          echo "=== OVERLAY WINDOW ==="; adb shell dumpsys window windows | grep -i -A3 "TarjemCaptions" | head -8 || true
+          echo "=== CRASHES ==="; adb logcat -d -b crash
           adb shell dumpsys window windows | grep -q TarjemCaptions && echo "OVERLAY_OK" || (echo "OVERLAY_MISSING"; exit 1)
           SH
           chmod +x tv-test.sh
-      - name: Test on an Android emulator (overlay over the home screen)
+      - name: Test on an Android emulator (TV-sized screen)
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 33
@@ -74,8 +82,9 @@ jobs:
         with:
           name: tv
           path: |
-            tarjem-tv.apk
+            tarjemni-tv.apk
             tv-screen.png
+            tv-app.png
 
   pc:
     runs-on: windows-latest
@@ -93,8 +102,11 @@ jobs:
           pip install -r requirements.txt pyinstaller pytest
       - name: Tests (including real Windows OCR)
         run: python -m pytest -q tests
-      - name: Build Tarjem.exe
-        run: pyinstaller --noconfirm --onefile --name Tarjem --add-data "tarjem/ui.html;tarjem" --collect-all winrt run_tarjem.py
+      - name: Stamp version
+        shell: pwsh
+        run: Set-Content -Path tarjem/version.py -Value "VERSION = $env:VERSION_CODE"
+      - name: Build Tarjemni.exe
+        run: pyinstaller --noconfirm --onefile --name Tarjemni --add-data "tarjem/ui.html;tarjem" --add-data "tarjem/fonts;tarjem/fonts" --collect-all winrt run_tarjem.py
       - name: Add adb (for granting the TV permission from the laptop)
         shell: pwsh
         run: |
@@ -106,37 +118,50 @@ jobs:
       - name: Smoke test the packaged exe
         shell: pwsh
         run: |
-          $p = Start-Process -FilePath dist/Tarjem.exe -ArgumentList "--no-browser" -PassThru
+          $p = Start-Process -FilePath dist/Tarjemni.exe -ArgumentList "--no-browser" -PassThru
           Start-Sleep -Seconds 12
           $state = Invoke-RestMethod http://127.0.0.1:47880/api/state
           Write-Host "state: running=$($state.running) version=$($state.version)"
+          if ("$($state.version)" -ne "$env:VERSION_CODE") { throw "version not stamped" }
           $ui = (Invoke-WebRequest http://127.0.0.1:47880/ -UseBasicParsing).Content
           if ($ui -notmatch "api/state") { throw "UI not served" }
+          $font = Invoke-WebRequest http://127.0.0.1:47880/fonts/cairo.ttf -UseBasicParsing
+          if ($font.RawContentLength -lt 100000) { throw "fonts missing" }
           $self = Invoke-RestMethod http://127.0.0.1:47880/api/selftest
           Write-Host "selftest: $($self | ConvertTo-Json -Compress)"
           Stop-Process -Id $p.Id -Force
           if (-not $self.ocr_ok) { throw "OCR self-test failed inside the exe" }
       - name: Zip
         shell: pwsh
-        run: Compress-Archive -Path dist/Tarjem.exe, dist/adb -DestinationPath ../../Tarjem-Windows.zip
+        run: Compress-Archive -Path dist/Tarjemni.exe, dist/adb -DestinationPath ../../Tarjemni-Windows.zip
       - uses: actions/upload-artifact@v4
         with:
           name: pc
-          path: Tarjem-Windows.zip
+          path: Tarjemni-Windows.zip
 
   release:
     needs: [tv, pc]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
+      - name: Version file for the auto-updaters
+        run: |
+          echo "{\"tv\": $VERSION_CODE, \"pc\": $VERSION_CODE}" > version.json
+          cp tv/tarjemni-tv.apk tarjem-tv.apk   # old link keeps working
+          cat version.json
       - uses: softprops/action-gh-release@v2
         with:
-          tag_name: tarjem-${{ github.run_number }}
-          name: ترجم ${{ github.run_number }}
+          tag_name: tarjemni-${{ github.run_number }}
+          name: ترجمني ${{ github.run_number }}
           body: |
-            التلفزيون (Downloader): https://github.com/${{ github.repository }}/releases/latest/download/tarjem-tv.apk
-            اللابتوب: https://github.com/${{ github.repository }}/releases/latest/download/Tarjem-Windows.zip
+            التلفزيون (Downloader): https://github.com/${{ github.repository }}/releases/latest/download/tarjemni-tv.apk
+            اللابتوب: https://github.com/${{ github.repository }}/releases/latest/download/Tarjemni-Windows.zip
+            البرنامجين يحدّثون نفسهم تلقائياً من هالإصدار وطالع.
           files: |
-            tv/tarjem-tv.apk
-            pc/Tarjem-Windows.zip
+            tv/tarjemni-tv.apk
+            tarjem-tv.apk
+            pc/Tarjemni-Windows.zip
+            version.json
+            tv/tv-screen.png
+            tv/tv-app.png
           make_latest: true
