@@ -145,14 +145,18 @@ class OverlayService : Service()
 			WindowManager.LayoutParams.MATCH_PARENT,
 			WindowManager.LayoutParams.MATCH_PARENT,
 			WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+			// No FLAG_NOT_TOUCHABLE: Android 12+ caps pass-through overlays at 80% opacity,
+			// which would let the English subtitle show through. TVs have no touch screen anyway,
+			// and NOT_FOCUSABLE keeps every remote/controller key going to the game.
 			WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-				WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
+				WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
 				WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
 				WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
 				WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED,
 			PixelFormat.TRANSLUCENT)
 		lp.gravity = Gravity.TOP or Gravity.START
 		lp.title = "TarjemCaptions"
+		lp.alpha = 1f
 		val view = CaptionLayer(this)
 		view.setStyle(style)
 		try
