@@ -135,6 +135,8 @@ class CaptionLayer(context: Context) : FrameLayout(context)
 	{
 		isClickable = false
 		isFocusable = false
+		// Positions are absolute screen coordinates, whatever the TV's language direction.
+		layoutDirection = View.LAYOUT_DIRECTION_LTR
 	}
 
 	fun setStyle(s: CaptionStyle)
@@ -284,8 +286,10 @@ class CaptionLayer(context: Context) : FrameLayout(context)
 			val lp = tv.layoutParams as LayoutParams
 			lp.width = p.width
 			lp.height = LayoutParams.WRAP_CONTENT
-			lp.gravity = Gravity.TOP or Gravity.START
+			// Absolute LEFT: with an Arabic TV language START means RIGHT and every box stuck to the right edge.
+			lp.gravity = Gravity.TOP or Gravity.LEFT
 			lp.leftMargin = p.left
+			lp.rightMargin = 0
 			lp.topMargin = p.top
 			tv.layoutParams = lp
 			if(tv.visibility != View.VISIBLE)
