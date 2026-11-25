@@ -1,0 +1,150 @@
+diff --git a/android/app/src/main/AndroidManifest.xml b/android/app/src/main/AndroidManifest.xml
+index ef40723f..e3c25cd1 100644
+--- a/android/app/src/main/AndroidManifest.xml
++++ b/android/app/src/main/AndroidManifest.xml
+@@ -15,6 +15,7 @@
+     <uses-permission android:name="android.permission.HIGH_SAMPLING_RATE_SENSORS" />
+ 
+     <application
++        android:name=".crash.TranslatorApplication"
+         android:allowBackup="true"
+         android:icon="@mipmap/ic_launcher"
+         android:label="@string/app_name"
+@@ -60,6 +61,12 @@
+             android:configChanges="keyboard|keyboardHidden|orientation|screenSize"
+             android:windowSoftInputMode="adjustResize"/>
+ 
++        <activity
++            android:name=".crash.CrashActivity"
++            android:process=":crash"
++            android:theme="@android:style/Theme.Material.NoActionBar"
++            android:exported="false" />
++
+         <activity
+             android:name=".regist.PsnLoginActivity"
+             android:configChanges="keyboard|keyboardHidden|orientation|screenSize"
+diff --git a/android/app/src/main/java/com/metallic/chiaki/crash/CrashReporter.kt b/android/app/src/main/java/com/metallic/chiaki/crash/CrashReporter.kt
+new file mode 100644
+index 00000000..1fc04e96
+--- /dev/null
++++ b/android/app/src/main/java/com/metallic/chiaki/crash/CrashReporter.kt
+@@ -0,0 +1,97 @@
++// SPDX-License-Identifier: LicenseRef-AGPL-3.0-only-OpenSSL
++// PS Arabic Translator — shows the error on screen when the app crashes,
++// so it can be photographed and fixed without connecting a cable to the TV.
++
++package com.metallic.chiaki.crash
++
++import android.app.Activity
++import android.app.Application
++import android.content.Intent
++import android.graphics.Color
++import android.os.Build
++import android.os.Bundle
++import android.os.Process
++import android.view.Gravity
++import android.widget.Button
++import android.widget.LinearLayout
++import android.widget.ScrollView
++import android.widget.TextView
++import java.io.PrintWriter
++import java.io.StringWriter
++import kotlin.system.exitProcess
++
++class TranslatorApplication : Application()
++{
++	override fun onCreate()
++	{
++		super.onCreate()
++		// The crash screen runs in its own process; don't install the handler there.
++		if(Build.VERSION.SDK_INT >= 28 && getProcessName().endsWith(":crash"))
++			return
++		val previous = Thread.getDefaultUncaughtExceptionHandler()
++		Thread.setDefaultUncaughtExceptionHandler { thread, error ->
++			try
++			{
++				val sw = StringWriter()
++				error.printStackTrace(PrintWriter(sw))
++				val report = buildString {
++					append("App ").append(packageName)
++					append(" | Android ").append(Build.VERSION.RELEASE).append(" (API ").append(Build.VERSION.SDK_INT).append(")")
++					append(" | ").append(Build.MANUFACTURER).append(' ').append(Build.MODEL)
++					append(" | ABI ").append(Build.SUPPORTED_ABIS.joinToString(","))
++					append("\nThread: ").append(thread.name).append("\n\n")
++					append(sw.toString())
++				}
++				startActivity(Intent(this, CrashActivity::class.java)
++					.putExtra(CrashActivity.EXTRA_REPORT, report)
++					.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK))
++				Process.killProcess(Process.myPid())
++				exitProcess(10)
++			}
++			catch(t: Throwable)
++			{
++				previous?.uncaughtException(thread, error)
++			}
++		}
++	}
++}
++
++class CrashActivity : Activity()
++{
++	companion object
++	{
++		const val EXTRA_REPORT = "report"
++	}
++
++	override fun onCreate(savedInstanceState: Bundle?)
++	{
++		super.onCreate(savedInstanceState)
++		val report = intent.getStringExtra(EXTRA_REPORT) ?: "No report"
++
++		val root = LinearLayout(this).apply {
++			orientation = LinearLayout.VERTICAL
++			setBackgroundColor(Color.rgb(20, 20, 28))
++			setPadding(48, 32, 48, 32)
++		}
++		root.addView(TextView(this).apply {
++			text = "حصل خطأ في التطبيق 😕\nصوّر هذي الشاشة وأرسلها عشان ينصلح"
++			setTextColor(Color.WHITE)
++			textSize = 22f
++			gravity = Gravity.CENTER
++			setPadding(0, 0, 0, 24)
++		})
++		val scroll = ScrollView(this).apply { isFocusable = true }
++		scroll.addView(TextView(this).apply {
++			text = report
++			setTextColor(Color.rgb(255, 210, 120))
++			textSize = 13f
++			setTextIsSelectable(true)
++		})
++		root.addView(scroll, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
++		root.addView(Button(this).apply {
++			text = "إغلاق"
++			setOnClickListener { finish() }
++		})
++		setContentView(root)
++	}
++}
+diff --git a/android/app/src/main/res/layout/activity_main.xml b/android/app/src/main/res/layout/activity_main.xml
+index e16f368c..7f33cfca 100644
+--- a/android/app/src/main/res/layout/activity_main.xml
++++ b/android/app/src/main/res/layout/activity_main.xml
+@@ -57,7 +57,7 @@
+         android:background="#44000000"
+         android:visibility="gone"
+         android:clickable="true"
+-        app:layout_behavior=".main.FloatingActionButtonBackgroundBehavior"/>
++        app:layout_behavior="com.metallic.chiaki.main.FloatingActionButtonBackgroundBehavior"/>
+ 
+     <LinearLayout
+         android:id="@+id/floatingActionButtonDial"
+@@ -69,7 +69,7 @@
+         android:layout_marginRight="20dp"
+         android:layout_height="wrap_content"
+         android:layout_width="wrap_content"
+-        app:layout_behavior=".main.FloatingActionButtonSpeedDialBehavior"
++        app:layout_behavior="com.metallic.chiaki.main.FloatingActionButtonSpeedDialBehavior"
+         android:gravity="right"
+         android:clipChildren="false">
+ 
