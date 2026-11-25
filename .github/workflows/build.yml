@@ -1,9 +1,7 @@
 name: Build TV app
 
 on:
-  push:
-    branches: [main, master]
-  workflow_dispatch:
+  workflow_dispatch:   # old Remote Play version; run by hand only
 
 permissions:
   contents: write
