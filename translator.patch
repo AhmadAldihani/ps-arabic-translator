@@ -1,0 +1,1836 @@
+diff --git a/android/app/build.gradle b/android/app/build.gradle
+index 61618b52..b9ce0eb9 100644
+--- a/android/app/build.gradle
++++ b/android/app/build.gradle
+@@ -25,11 +25,15 @@ android {
+     ndkVersion "28.2.13676358"
+ 
+     defaultConfig {
+-        applicationId "com.metallic.chiaki"
++        applicationId "com.psarabic.translator"
+         minSdk 24
+         targetSdk 35
+         versionCode 12
+-        versionName chiakiVersion
++        versionName "$chiakiVersion-ar1"
++        ndk {
++            // Android TVs and TV boxes are ARM; skipping x86 halves the build time.
++            abiFilters "armeabi-v7a", "arm64-v8a"
++        }
+         externalNativeBuild {
+             cmake {
+                 arguments "-DCHIAKI_ENABLE_TESTS=OFF",
+@@ -132,5 +136,8 @@ dependencies {
+ 
+     implementation libs.oboe
+ 
++    implementation libs.mlkit.text.recognition
++    implementation libs.mlkit.translate
++
+     testImplementation 'junit:junit:4.13.2'
+ }
+diff --git a/android/app/src/main/AndroidManifest.xml b/android/app/src/main/AndroidManifest.xml
+index a9594cbd..ef40723f 100644
+--- a/android/app/src/main/AndroidManifest.xml
++++ b/android/app/src/main/AndroidManifest.xml
+@@ -26,7 +26,7 @@
+         tools:ignore="GoogleAppIndexingWarning">
+ 
+         <provider
+-            android:authorities="com.metallic.chiaki.fileprovider"
++            android:authorities="com.psarabic.translator.fileprovider"
+             android:name="androidx.core.content.FileProvider"
+             android:grantUriPermissions="true"
+             android:exported="false">
+@@ -60,6 +60,11 @@
+             android:configChanges="keyboard|keyboardHidden|orientation|screenSize"
+             android:windowSoftInputMode="adjustResize"/>
+ 
++        <activity
++            android:name=".regist.PsnLoginActivity"
++            android:configChanges="keyboard|keyboardHidden|orientation|screenSize"
++            android:windowSoftInputMode="adjustResize" />
++
+         <activity
+             android:name=".regist.RegistExecuteActivity"
+             android:theme="@style/MageTheme"
+diff --git a/android/app/src/main/java/com/metallic/chiaki/common/LogManager.kt b/android/app/src/main/java/com/metallic/chiaki/common/LogManager.kt
+index 22c4c0cd..ef1bec82 100644
+--- a/android/app/src/main/java/com/metallic/chiaki/common/LogManager.kt
++++ b/android/app/src/main/java/com/metallic/chiaki/common/LogManager.kt
+@@ -9,7 +9,7 @@ import java.text.SimpleDateFormat
+ import java.util.*
+ import java.util.regex.Pattern
+ 
+-val fileProviderAuthority = "com.metallic.chiaki.fileprovider"
++const val fileProviderAuthority = "com.psarabic.translator.fileprovider" // must match AndroidManifest.xml
+ private const val baseDirName = "session_logs" // must be in sync with filepaths.xml
+ private val dateFormat = SimpleDateFormat("yyyy-MM-dd_HH-mm-ss-SSS", Locale.US)
+ private const val filePrefix = "chiaki_session_"
+diff --git a/android/app/src/main/java/com/metallic/chiaki/common/Preferences.kt b/android/app/src/main/java/com/metallic/chiaki/common/Preferences.kt
+index e1d57ad4..4e59dcd9 100644
+--- a/android/app/src/main/java/com/metallic/chiaki/common/Preferences.kt
++++ b/android/app/src/main/java/com/metallic/chiaki/common/Preferences.kt
+@@ -11,6 +11,7 @@ import com.metallic.chiaki.lib.Codec
+ import com.metallic.chiaki.lib.ConnectVideoProfile
+ import com.metallic.chiaki.lib.VideoFPSPreset
+ import com.metallic.chiaki.lib.VideoResolutionPreset
++import com.metallic.chiaki.translate.TranslationSettings
+ import kotlinx.coroutines.flow.MutableStateFlow
+ import kotlinx.coroutines.flow.StateFlow
+ import kotlinx.coroutines.flow.asStateFlow
+@@ -129,6 +130,30 @@ class Preferences(context: Context)
+ 		}  ?: codecDefault
+ 		set(value) { sharedPreferences.edit().putString(codecKey, value.value).apply() }
+ 
++	// ---- Live subtitle translation ----
++
++	val translationEnabledKey get() = resources.getString(R.string.preferences_translation_enabled_key)
++	var translationEnabled
++		get() = sharedPreferences.getBoolean(translationEnabledKey, true)
++		set(value) { sharedPreferences.edit().putBoolean(translationEnabledKey, value).apply() }
++
++	val translationCenteredOnlyKey get() = resources.getString(R.string.preferences_translation_centered_only_key)
++	var translationCenteredOnly
++		get() = sharedPreferences.getBoolean(translationCenteredOnlyKey, true)
++		set(value) { sharedPreferences.edit().putBoolean(translationCenteredOnlyKey, value).apply() }
++
++	val translationSourceLanguageKey get() = resources.getString(R.string.preferences_translation_source_language_key)
++	val translationRegionKey get() = resources.getString(R.string.preferences_translation_region_key)
++	val translationPlacementKey get() = resources.getString(R.string.preferences_translation_placement_key)
++	val translationTextSizeKey get() = resources.getString(R.string.preferences_translation_text_size_key)
++	val translationSpeedKey get() = resources.getString(R.string.preferences_translation_speed_key)
++
++	/** Raw string values of the translation list settings, keyed by preference key. */
++	fun getTranslationString(key: String): String? = sharedPreferences.getString(key, null)
++	fun putTranslationString(key: String, value: String?) { sharedPreferences.edit().putString(key, value).apply() }
++	val translationStringKeys get() = setOf(translationSourceLanguageKey, translationRegionKey,
++		translationPlacementKey, translationTextSizeKey, translationSpeedKey)
++
+ 	private val videoProfileDefaultBitrate get() = ConnectVideoProfile.preset(resolution.preset, fps.preset, codec.codec)
+ 	val videoProfile get() = videoProfileDefaultBitrate.let {
+ 		val bitrate = bitrate
+@@ -137,4 +162,15 @@ class Preferences(context: Context)
+ 		else
+ 			it.copy(bitrate = bitrate)
+ 	}
+-}
+\ No newline at end of file
++}
++
++fun Preferences.translationSettings() = TranslationSettings(
++	enabled = translationEnabled,
++	sourceLanguage = getTranslationString(translationSourceLanguageKey) ?: "en",
++	targetLanguage = "ar",
++	scanRegion = TranslationSettings.ScanRegion.from(getTranslationString(translationRegionKey)),
++	placement = TranslationSettings.Placement.from(getTranslationString(translationPlacementKey)),
++	textSize = TranslationSettings.TextSize.from(getTranslationString(translationTextSizeKey)),
++	centeredOnly = translationCenteredOnly,
++	scanIntervalMs = getTranslationString(translationSpeedKey)?.toLongOrNull()?.coerceIn(150L, 2000L) ?: 300L
++)
+diff --git a/android/app/src/main/java/com/metallic/chiaki/regist/PsnLoginActivity.kt b/android/app/src/main/java/com/metallic/chiaki/regist/PsnLoginActivity.kt
+new file mode 100644
+index 00000000..bfdf9bf6
+--- /dev/null
++++ b/android/app/src/main/java/com/metallic/chiaki/regist/PsnLoginActivity.kt
+@@ -0,0 +1,224 @@
++// SPDX-License-Identifier: LicenseRef-AGPL-3.0-only-OpenSSL
++// PS Arabic Translator — "Sign in with PlayStation" to fetch the PSN Account ID automatically.
++// Same OAuth flow as chiaki-ng's scripts/psn-account-id.py, done inside a WebView.
++
++package com.metallic.chiaki.regist
++
++import android.annotation.SuppressLint
++import android.app.Activity
++import android.content.Intent
++import android.graphics.Color
++import android.net.Uri
++import android.os.Bundle
++import android.os.Handler
++import android.os.Looper
++import android.util.Base64
++import android.view.Gravity
++import android.view.View
++import android.view.ViewGroup
++import android.webkit.CookieManager
++import android.webkit.WebResourceRequest
++import android.webkit.WebView
++import android.webkit.WebViewClient
++import android.widget.FrameLayout
++import android.widget.ProgressBar
++import android.widget.TextView
++import com.metallic.chiaki.R
++import org.json.JSONObject
++import java.io.IOException
++import java.math.BigInteger
++import java.net.HttpURLConnection
++import java.net.URL
++import java.net.URLEncoder
++
++class PsnLoginActivity : Activity()
++{
++	companion object
++	{
++		const val EXTRA_ACCOUNT_ID = "psn_account_id"
++
++		// Public client of the official PS Remote Play app (same values chiaki-ng ships).
++		private const val CLIENT_ID = "ba495a24-818c-472b-b12d-ff231c1b5745"
++		private const val CLIENT_SECRET = "mvaiZkRsAsI1IBkY"
++		private const val REDIRECT_URI = "https://remoteplay.dl.playstation.net/remoteplay/redirect"
++		private const val TOKEN_URL = "https://auth.api.sonyentertainmentnetwork.com/2.0/oauth/token"
++		private const val LOGIN_URL = "https://auth.api.sonyentertainmentnetwork.com/2.0/oauth/authorize" +
++			"?service_entity=urn:service-entity:psn&response_type=code&client_id=$CLIENT_ID" +
++			"&redirect_uri=$REDIRECT_URI&scope=psn:clientapp&request_locale=en_US&ui=pr&service_logo=ps" +
++			"&layout_type=popup&smcid=remoteplay&prompt=always&PlatformPrivacyWs1=minimal&"
++
++		/** PSN numeric user id → 8 bytes little-endian → Base64, the format Remote Play registration expects. */
++		fun accountIdFromUserId(userId: String): String
++		{
++			val value = BigInteger(userId.trim()).toLong()
++			val bytes = ByteArray(8) { i -> (value ushr (8 * i)).toByte() }
++			return Base64.encodeToString(bytes, Base64.NO_WRAP)
++		}
++	}
++
++	private val mainHandler = Handler(Looper.getMainLooper())
++	private var webView: WebView? = null
++	private lateinit var statusView: TextView
++	private lateinit var progress: ProgressBar
++	private var codeHandled = false
++
++	@SuppressLint("SetJavaScriptEnabled")
++	override fun onCreate(savedInstanceState: Bundle?)
++	{
++		super.onCreate(savedInstanceState)
++		title = getString(R.string.psn_login_title)
++
++		val root = FrameLayout(this)
++		root.setBackgroundColor(Color.WHITE)
++
++		val web = try { WebView(this) } catch(e: Exception) { null }
++
++		progress = ProgressBar(this).apply { visibility = View.GONE }
++		statusView = TextView(this).apply {
++			setTextColor(Color.BLACK)
++			textSize = 18f
++			gravity = Gravity.CENTER
++			setPadding(48, 48, 48, 48)
++			visibility = View.GONE
++		}
++
++		if(web != null)
++		{
++			webView = web
++			root.addView(web, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
++			CookieManager.getInstance().removeAllCookies(null)
++			web.settings.javaScriptEnabled = true
++			web.settings.domStorageEnabled = true
++			// Some sign-in pages refuse the embedded-browser marker.
++			web.settings.userAgentString = web.settings.userAgentString.replace("; wv", "")
++			web.webViewClient = object : WebViewClient()
++			{
++				override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean =
++					interceptRedirect(request.url.toString())
++
++				override fun onPageStarted(view: WebView, url: String, favicon: android.graphics.Bitmap?)
++				{
++					if(!interceptRedirect(url))
++						super.onPageStarted(view, url, favicon)
++				}
++			}
++			web.loadUrl(LOGIN_URL)
++		}
++
++		root.addView(statusView, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER))
++		root.addView(progress, FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER).apply {
++			topMargin = 200
++		})
++		setContentView(root)
++
++		if(web == null)
++			showError("WebView غير متوفر في هذا الجهاز")
++	}
++
++	override fun onDestroy()
++	{
++		webView?.destroy()
++		webView = null
++		super.onDestroy()
++	}
++
++	@Deprecated("Deprecated in Java")
++	override fun onBackPressed()
++	{
++		val web = webView
++		if(web != null && web.visibility == View.VISIBLE && web.canGoBack())
++			web.goBack()
++		else
++			super.onBackPressed()
++	}
++
++	/** Returns true when [url] is Sony's redirect carrying the auth code (and handles it). */
++	private fun interceptRedirect(url: String): Boolean
++	{
++		if(!url.startsWith(REDIRECT_URI))
++			return false
++		if(codeHandled)
++			return true
++		codeHandled = true
++		val code = Uri.parse(url).getQueryParameter("code")
++		webView?.stopLoading()
++		webView?.visibility = View.GONE
++		if(code.isNullOrEmpty())
++		{
++			showError("no code")
++			return true
++		}
++		statusView.text = getString(R.string.psn_login_working)
++		statusView.visibility = View.VISIBLE
++		progress.visibility = View.VISIBLE
++		Thread { exchangeCode(code) }.start()
++		return true
++	}
++
++	private fun exchangeCode(code: String)
++	{
++		try
++		{
++			val body = "grant_type=authorization_code&code=" + URLEncoder.encode(code, "UTF-8") +
++				"&redirect_uri=" + URLEncoder.encode(REDIRECT_URI, "UTF-8")
++			val tokenJson = JSONObject(http("POST", TOKEN_URL, body))
++			val token = tokenJson.optString("access_token")
++			if(token.isEmpty())
++				throw IOException("access_token missing")
++
++			val infoJson = JSONObject(http("GET", TOKEN_URL + "/" + URLEncoder.encode(token, "UTF-8"), null))
++			val userId = infoJson.optString("user_id")
++			if(userId.isEmpty())
++				throw IOException("user_id missing")
++			val accountId = accountIdFromUserId(userId)
++
++			mainHandler.post {
++				statusView.text = getString(R.string.psn_login_success)
++				progress.visibility = View.GONE
++				setResult(RESULT_OK, Intent().putExtra(EXTRA_ACCOUNT_ID, accountId))
++				mainHandler.postDelayed({ finish() }, 800)
++			}
++		}
++		catch(e: Exception)
++		{
++			mainHandler.post { showError(e.message ?: e.javaClass.simpleName) }
++		}
++	}
++
++	private fun http(method: String, url: String, formBody: String?): String
++	{
++		val conn = URL(url).openConnection() as HttpURLConnection
++		try
++		{
++			conn.requestMethod = method
++			conn.connectTimeout = 15_000
++			conn.readTimeout = 15_000
++			val basic = Base64.encodeToString("$CLIENT_ID:$CLIENT_SECRET".toByteArray(), Base64.NO_WRAP)
++			conn.setRequestProperty("Authorization", "Basic $basic")
++			if(formBody != null)
++			{
++				conn.doOutput = true
++				conn.setRequestProperty("Content-Type", "application/x-www-form-urlencoded")
++				conn.outputStream.use { it.write(formBody.toByteArray(Charsets.US_ASCII)) }
++			}
++			val status = conn.responseCode
++			val stream = if(status in 200..299) conn.inputStream else conn.errorStream
++			val text = stream?.bufferedReader()?.use { it.readText() } ?: ""
++			if(status !in 200..299)
++				throw IOException("HTTP $status")
++			return text
++		}
++		finally
++		{
++			conn.disconnect()
++		}
++	}
++
++	private fun showError(message: String)
++	{
++		progress.visibility = View.GONE
++		statusView.text = getString(R.string.psn_login_failed, message)
++		statusView.visibility = View.VISIBLE
++		setResult(RESULT_CANCELED)
++	}
++}
+diff --git a/android/app/src/main/java/com/metallic/chiaki/regist/RegistActivity.kt b/android/app/src/main/java/com/metallic/chiaki/regist/RegistActivity.kt
+index 9190f9c5..a9b41887 100644
+--- a/android/app/src/main/java/com/metallic/chiaki/regist/RegistActivity.kt
++++ b/android/app/src/main/java/com/metallic/chiaki/regist/RegistActivity.kt
+@@ -28,6 +28,7 @@ class RegistActivity: AppCompatActivity(), RevealActivity
+ 		private const val PIN_LENGTH = 8
+ 
+ 		private const val REQUEST_REGIST = 1
++		private const val REQUEST_PSN_LOGIN = 2
+ 	}
+ 
+ 	private lateinit var viewModel: RegistViewModel
+@@ -50,6 +51,9 @@ class RegistActivity: AppCompatActivity(), RevealActivity
+ 		binding.broadcastCheckBox.isChecked = intent.getBooleanExtra(EXTRA_BROADCAST, true)
+ 
+ 		binding.registButton.setOnClickListener { doRegist() }
++		binding.psnLoginButton.setOnClickListener {
++			startActivityForResult(Intent(this, PsnLoginActivity::class.java), REQUEST_PSN_LOGIN)
++		}
+ 
+ 		binding.ps4VersionRadioGroup.check(when(viewModel.ps4Version.value ?: RegistViewModel.ConsoleVersion.PS5) {
+ 			RegistViewModel.ConsoleVersion.PS5 -> R.id.ps5RadioButton
+@@ -144,5 +148,12 @@ class RegistActivity: AppCompatActivity(), RevealActivity
+ 		super.onActivityResult(requestCode, resultCode, data)
+ 		if(requestCode == REQUEST_REGIST && resultCode == RESULT_OK)
+ 			finish()
++		if(requestCode == REQUEST_PSN_LOGIN && resultCode == RESULT_OK)
++		{
++			val accountId = data?.getStringExtra(PsnLoginActivity.EXTRA_ACCOUNT_ID) ?: return
++			binding.psnIdEditText.setText(accountId)
++			binding.psnIdEditText.error = null
++			binding.pinEditText.requestFocus()
++		}
+ 	}
+ }
+\ No newline at end of file
+diff --git a/android/app/src/main/java/com/metallic/chiaki/settings/SettingsFragment.kt b/android/app/src/main/java/com/metallic/chiaki/settings/SettingsFragment.kt
+index f2aa77c8..e9f1b26d 100644
+--- a/android/app/src/main/java/com/metallic/chiaki/settings/SettingsFragment.kt
++++ b/android/app/src/main/java/com/metallic/chiaki/settings/SettingsFragment.kt
+@@ -27,6 +27,8 @@ class DataStore(val preferences: Preferences): PreferenceDataStore()
+ 		preferences.rumbleEnabledKey -> preferences.rumbleEnabled
+ 		preferences.motionEnabledKey -> preferences.motionEnabled
+ 		preferences.buttonHapticEnabledKey -> preferences.buttonHapticEnabled
++		preferences.translationEnabledKey -> preferences.translationEnabled
++		preferences.translationCenteredOnlyKey -> preferences.translationCenteredOnly
+ 		else -> defValue
+ 	}
+ 
+@@ -39,6 +41,8 @@ class DataStore(val preferences: Preferences): PreferenceDataStore()
+ 			preferences.rumbleEnabledKey -> preferences.rumbleEnabled = value
+ 			preferences.motionEnabledKey -> preferences.motionEnabled = value
+ 			preferences.buttonHapticEnabledKey -> preferences.buttonHapticEnabled = value
++			preferences.translationEnabledKey -> preferences.translationEnabled = value
++			preferences.translationCenteredOnlyKey -> preferences.translationCenteredOnly = value
+ 		}
+ 	}
+ 
+@@ -48,11 +52,17 @@ class DataStore(val preferences: Preferences): PreferenceDataStore()
+ 		preferences.fpsKey -> preferences.fps.value
+ 		preferences.bitrateKey -> preferences.bitrate?.toString() ?: ""
+ 		preferences.codecKey -> preferences.codec.value
++		in preferences.translationStringKeys -> preferences.getTranslationString(key) ?: defValue
+ 		else -> defValue
+ 	}
+ 
+ 	override fun putString(key: String, value: String?)
+ 	{
++		if(key in preferences.translationStringKeys)
++		{
++			preferences.putTranslationString(key, value)
++			return
++		}
+ 		when(key)
+ 		{
+ 			preferences.resolutionKey ->
+diff --git a/android/app/src/main/java/com/metallic/chiaki/stream/StreamActivity.kt b/android/app/src/main/java/com/metallic/chiaki/stream/StreamActivity.kt
+index c15e57c3..8c73097e 100644
+--- a/android/app/src/main/java/com/metallic/chiaki/stream/StreamActivity.kt
++++ b/android/app/src/main/java/com/metallic/chiaki/stream/StreamActivity.kt
+@@ -31,6 +31,8 @@ import com.metallic.chiaki.session.*
+ import com.metallic.chiaki.touchcontrols.DefaultTouchControlsFragment
+ import com.metallic.chiaki.touchcontrols.TouchControlsFragment
+ import com.metallic.chiaki.touchcontrols.TouchpadOnlyFragment
++import com.metallic.chiaki.common.translationSettings
++import com.metallic.chiaki.translate.SubtitleTranslator
+ import kotlinx.coroutines.Job
+ import kotlinx.coroutines.flow.launchIn
+ import kotlinx.coroutines.flow.onEach
+@@ -52,6 +54,7 @@ class StreamActivity : AppCompatActivity()
+ 	private lateinit var viewModel: StreamViewModel
+ 	private lateinit var binding: ActivityStreamBinding
+ 	private lateinit var insetsController: WindowInsetsControllerCompat
++	private var subtitleTranslator: SubtitleTranslator? = null
+ 
+ 	private val uiVisibilityHandler = Handler(Looper.getMainLooper())
+ 
+@@ -117,6 +120,14 @@ class StreamActivity : AppCompatActivity()
+ 
+ 		//viewModel.session.attachToTextureView(textureView)
+ 		viewModel.session.attachToSurfaceView(binding.surfaceView)
++
++		subtitleTranslator = SubtitleTranslator(binding.surfaceView, binding.subtitleOverlay)
++		binding.translationSwitch.isChecked = viewModel.preferences.translationEnabled
++		binding.translationSwitch.setOnCheckedChangeListener { _, isChecked ->
++			viewModel.preferences.translationEnabled = isChecked
++			restartTranslator()
++			showOverlay()
++		}
+ 		viewModel.session.state.observe(this, Observer { this.stateChanged(it) })
+ 		adjustStreamViewAspect()
+ 
+@@ -158,11 +169,21 @@ class StreamActivity : AppCompatActivity()
+ 		super.onResume()
+ 		hideSystemUI()
+ 		viewModel.session.resume()
++		restartTranslator()
++	}
++
++	private fun restartTranslator()
++	{
++		val translator = subtitleTranslator ?: return
++		translator.stop()
++		translator.updateSettings(viewModel.preferences.translationSettings())
++		translator.start()
+ 	}
+ 
+ 	override fun onPause()
+ 	{
+ 		super.onPause()
++		subtitleTranslator?.stop()
+ 		viewModel.session.pause()
+ 	}
+ 
+@@ -170,6 +191,8 @@ class StreamActivity : AppCompatActivity()
+ 	{
+ 		super.onDestroy()
+ 		controlsJob?.cancel()
++		subtitleTranslator?.release()
++		subtitleTranslator = null
+ 	}
+ 
+ 	private fun reconnect()
+diff --git a/android/app/src/main/java/com/metallic/chiaki/translate/SubtitleExtractor.kt b/android/app/src/main/java/com/metallic/chiaki/translate/SubtitleExtractor.kt
+new file mode 100644
+index 00000000..b780ed14
+--- /dev/null
++++ b/android/app/src/main/java/com/metallic/chiaki/translate/SubtitleExtractor.kt
+@@ -0,0 +1,173 @@
++// SPDX-License-Identifier: LicenseRef-AGPL-3.0-only-OpenSSL
++// PS Arabic Translator — picks the subtitle out of everything OCR finds on screen.
++
++package com.metallic.chiaki.translate
++
++import kotlin.math.abs
++import kotlin.math.max
++import kotlin.math.min
++
++/** Integer rectangle in frame pixels (Android-free so the logic can be unit tested on the JVM). */
++data class Box(val left: Int, val top: Int, val right: Int, val bottom: Int)
++{
++	val width get() = right - left
++	val height get() = bottom - top
++	val centerX get() = (left + right) / 2f
++
++	fun union(o: Box) = Box(min(left, o.left), min(top, o.top), max(right, o.right), max(bottom, o.bottom))
++	fun offset(dx: Int, dy: Int) = Box(left + dx, top + dy, right + dx, bottom + dy)
++}
++
++data class OcrLine(val text: String, val box: Box)
++
++/**
++ * A subtitle found on one frame.
++ * [text] is what gets translated, [key] is a normalised form used to tell
++ * "same subtitle, OCR jitter" apart from "a new line of dialogue".
++ */
++data class SubtitleBlock(val text: String, val key: String, val box: Box, val lineHeight: Int)
++
++object SubtitleExtractor
++{
++	private val letterRegex = Regex("\\p{L}")
++	private val digitRegex = Regex("\\p{N}")
++	private val junkEdges = Regex("^[\\s|_~•·*#=<>\\[\\]{}]+|[\\s|_~•·*#=<>\\[\\]{}]+$")
++	private val multiSpace = Regex("\\s+")
++	private val keyStrip = Regex("[^\\p{L}\\p{N} ]")
++	private val leadingPipe = Regex("^\\|(?=\\s+\\p{L})")
++	private val innerPipe = Regex("(?<=\\s)\\|(?=\\s+\\p{L})")
++
++	/** Minimum height of a text line, as a fraction of the frame height. Smaller text is HUD noise. */
++	private const val MIN_LINE_HEIGHT_FRACTION = 0.012f
++	/** Centred-only mode keeps lines whose centre lies in this middle band of the frame. */
++	private const val CENTER_BAND_MIN = 0.25f
++	private const val CENTER_BAND_MAX = 0.75f
++
++	fun cleanLine(raw: String): String
++	{
++		var s = raw.replace(' ', ' ').trim()
++		// The most common OCR slip in game fonts: a lone pipe read instead of the pronoun "I".
++		// Only at the start or between words; a pipe at the very end is a border, stripped below.
++		s = s.replace(leadingPipe, "I").replace(innerPipe, "I")
++		s = s.replace(junkEdges, "")
++		return s.replace(multiSpace, " ").trim()
++	}
++
++	fun isUsefulLine(text: String, box: Box, frameWidth: Int, frameHeight: Int, centeredOnly: Boolean): Boolean
++	{
++		val letters = letterRegex.findAll(text).count()
++		if(letters < 2)
++			return false
++		// Timers, scores, ammo counters…
++		val digits = digitRegex.findAll(text).count()
++		if(digits > letters)
++			return false
++		if(frameHeight > 0 && box.height < frameHeight * MIN_LINE_HEIGHT_FRACTION)
++			return false
++		if(centeredOnly && frameWidth > 0)
++		{
++			val c = box.centerX / frameWidth
++			if(c < CENTER_BAND_MIN || c > CENTER_BAND_MAX)
++				return false
++		}
++		return true
++	}
++
++	/**
++	 * Groups the OCR lines into paragraphs and returns the one that most looks like a subtitle:
++	 * the paragraph with the most letters, preferring the lower one on a tie.
++	 */
++	fun extract(rawLines: List<OcrLine>, frameWidth: Int, frameHeight: Int, centeredOnly: Boolean): SubtitleBlock?
++	{
++		val lines = rawLines
++			.map { OcrLine(cleanLine(it.text), it.box) }
++			.filter { isUsefulLine(it.text, it.box, frameWidth, frameHeight, centeredOnly) }
++			.sortedBy { it.box.top }
++		if(lines.isEmpty())
++			return null
++
++		val groups = mutableListOf<MutableList<OcrLine>>()
++		for(line in lines)
++		{
++			val group = groups.lastOrNull()
++			if(group != null && belongsTo(group, line, frameWidth))
++				group.add(line)
++			else
++				groups.add(mutableListOf(line))
++		}
++
++		val best = groups.maxWithOrNull(
++			compareBy<List<OcrLine>> { g -> g.sumOf { letterRegex.findAll(it.text).count() } }
++				.thenBy { g -> g.last().box.bottom }
++		) ?: return null
++
++		val text = joinForTranslation(best.map { it.text })
++		val key = normalize(text)
++		if(key.isEmpty())
++			return null
++		val box = best.map { it.box }.reduce { a, b -> a.union(b) }
++		val lineHeight = best.map { it.box.height }.average().toInt()
++		return SubtitleBlock(text, key, box, lineHeight)
++	}
++
++	private fun belongsTo(group: List<OcrLine>, line: OcrLine, frameWidth: Int): Boolean
++	{
++		val prev = group.last()
++		val gap = line.box.top - prev.box.bottom
++		val lineH = max(prev.box.height, line.box.height)
++		if(gap > lineH * 1.3f)
++			return false
++		val groupCenter = group.map { it.box.centerX }.average().toFloat()
++		return abs(line.box.centerX - groupCenter) < frameWidth * 0.25f
++	}
++
++	/**
++	 * Subtitles wrap long sentences over several lines; the translator works much better on the
++	 * whole sentence. Lines that start with a dash are separate speakers and keep their own line.
++	 */
++	fun joinForTranslation(lines: List<String>): String
++	{
++		val sb = StringBuilder()
++		for(line in lines)
++		{
++			if(sb.isEmpty())
++			{
++				sb.append(line)
++				continue
++			}
++			val newSpeaker = line.startsWith("-") || line.startsWith("–") || line.startsWith("—")
++			when
++			{
++				newSpeaker -> sb.append('\n').append(line)
++				sb.endsWith("-") && !sb.endsWith(" -") -> { sb.setLength(sb.length - 1); sb.append(line) }
++				else -> sb.append(' ').append(line)
++			}
++		}
++		return sb.toString()
++	}
++
++	fun normalize(text: String): String =
++		text.lowercase().replace(keyStrip, " ").replace(multiSpace, " ").trim()
++
++	/** 1.0 = identical, 0.0 = nothing in common (normalised Levenshtein). */
++	fun similarity(a: String, b: String): Double
++	{
++		if(a == b)
++			return 1.0
++		if(a.isEmpty() || b.isEmpty())
++			return 0.0
++		val prev = IntArray(b.length + 1) { it }
++		val cur = IntArray(b.length + 1)
++		for(i in 1..a.length)
++		{
++			cur[0] = i
++			for(j in 1..b.length)
++			{
++				val cost = if(a[i - 1] == b[j - 1]) 0 else 1
++				cur[j] = min(min(cur[j - 1] + 1, prev[j] + 1), prev[j - 1] + cost)
++			}
++			System.arraycopy(cur, 0, prev, 0, cur.size)
++		}
++		return 1.0 - prev[b.length].toDouble() / max(a.length, b.length)
++	}
++}
+diff --git a/android/app/src/main/java/com/metallic/chiaki/translate/SubtitleOverlayView.kt b/android/app/src/main/java/com/metallic/chiaki/translate/SubtitleOverlayView.kt
+new file mode 100644
+index 00000000..34c5f4ce
+--- /dev/null
++++ b/android/app/src/main/java/com/metallic/chiaki/translate/SubtitleOverlayView.kt
+@@ -0,0 +1,164 @@
++// SPDX-License-Identifier: LicenseRef-AGPL-3.0-only-OpenSSL
++// PS Arabic Translator — draws the Arabic subtitle box on top of the game picture.
++
++package com.metallic.chiaki.translate
++
++import android.content.Context
++import android.graphics.Color
++import android.graphics.RectF
++import android.graphics.Typeface
++import android.graphics.drawable.GradientDrawable
++import android.util.AttributeSet
++import android.util.TypedValue
++import android.view.Gravity
++import android.view.View
++import android.widget.FrameLayout
++import android.widget.TextView
++import kotlin.math.max
++import kotlin.math.min
++import kotlin.math.roundToInt
++
++/**
++ * Transparent full-screen layer. It never takes focus or touches, so the game keeps every input.
++ * All public methods must be called on the main thread.
++ */
++class SubtitleOverlayView @JvmOverloads constructor(
++	context: Context,
++	attrs: AttributeSet? = null,
++	defStyleAttr: Int = 0
++) : FrameLayout(context, attrs, defStyleAttr)
++{
++	private val subtitleView = TextView(context)
++	private val statusView = TextView(context)
++	private val hideStatusRunnable = Runnable { statusView.animate().alpha(0f).setDuration(400).start() }
++
++	private var placement = TranslationSettings.Placement.COVER_ORIGINAL
++	private var textSizeSp = TranslationSettings.TextSize.MEDIUM.sp
++
++	init
++	{
++		isClickable = false
++		isFocusable = false
++		importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
++
++		subtitleView.apply {
++			setTextColor(Color.WHITE)
++			typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD)
++			gravity = Gravity.CENTER
++			textDirection = View.TEXT_DIRECTION_RTL
++			layoutDirection = View.LAYOUT_DIRECTION_RTL
++			setShadowLayer(dp(2f), 0f, dp(1f), Color.BLACK)
++			setLineSpacing(0f, 1.15f)
++			background = GradientDrawable().apply {
++				cornerRadius = dp(10f)
++				setColor(Color.argb(235, 12, 12, 16))
++				setStroke(dp(1f).roundToInt(), Color.argb(90, 255, 255, 255))
++			}
++			val padH = dp(16f).roundToInt()
++			val padV = dp(8f).roundToInt()
++			setPadding(padH, padV, padH, padV)
++			alpha = 0f
++			visibility = View.GONE
++		}
++		addView(subtitleView, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT))
++
++		statusView.apply {
++			setTextColor(Color.WHITE)
++			setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
++			textDirection = View.TEXT_DIRECTION_RTL
++			background = GradientDrawable().apply {
++				cornerRadius = dp(8f)
++				setColor(Color.argb(200, 20, 60, 140))
++			}
++			val p = dp(8f).roundToInt()
++			setPadding(p * 2, p, p * 2, p)
++			alpha = 0f
++		}
++		addView(statusView, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply {
++			gravity = Gravity.TOP or Gravity.END
++			val m = dp(20f).roundToInt()
++			setMargins(m, m, m, m)
++		})
++	}
++
++	fun applySettings(settings: TranslationSettings)
++	{
++		placement = settings.placement
++		textSizeSp = settings.textSize.sp
++		subtitleView.setTextSize(TypedValue.COMPLEX_UNIT_SP, textSizeSp)
++	}
++
++	/**
++	 * Shows [text] over [target], a rectangle in this view's own coordinates that covers the
++	 * original subtitle. The box grows upwards from the original's bottom edge so a longer Arabic
++	 * sentence never pushes off the bottom of the screen.
++	 */
++	fun showSubtitle(text: String, target: RectF?)
++	{
++		if(width == 0 || height == 0)
++			return
++		subtitleView.text = text
++
++		val margin = dp(24f)
++		val maxWidth = (width - margin * 2).roundToInt()
++		val minWidth = (width * 0.35f).roundToInt()
++		val lp = subtitleView.layoutParams as LayoutParams
++
++		if(placement == TranslationSettings.Placement.BOTTOM_BAND || target == null)
++		{
++			subtitleView.maxWidth = (width * 0.8f).roundToInt()
++			subtitleView.minWidth = minWidth
++			subtitleView.minHeight = 0
++			lp.gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
++			lp.leftMargin = 0
++			lp.topMargin = 0
++			lp.bottomMargin = (height * 0.06f).roundToInt()
++		}
++		else
++		{
++			val pad = dp(12f)
++			val boxWidth = min(maxWidth, max(minWidth, (target.width() + pad * 2).roundToInt()))
++			subtitleView.minWidth = boxWidth
++			subtitleView.maxWidth = boxWidth
++			val left = (target.centerX() - boxWidth / 2f).coerceIn(margin, width - margin - boxWidth)
++			lp.gravity = Gravity.BOTTOM or Gravity.START
++			lp.leftMargin = left.roundToInt()
++			lp.topMargin = 0
++			lp.bottomMargin = max(dp(8f), height - (target.bottom + pad)).roundToInt()
++			// The box must at least cover the original lines so no English peeks through.
++			subtitleView.minHeight = (target.height() + pad * 2).roundToInt()
++		}
++		subtitleView.layoutParams = lp
++
++		if(subtitleView.visibility != View.VISIBLE)
++		{
++			subtitleView.visibility = View.VISIBLE
++			subtitleView.animate().cancel()
++			subtitleView.alpha = 0f
++			subtitleView.animate().alpha(1f).setDuration(120).start()
++		}
++	}
++
++	fun hideSubtitle()
++	{
++		if(subtitleView.visibility != View.VISIBLE)
++			return
++		subtitleView.animate().cancel()
++		subtitleView.animate().alpha(0f).setDuration(150).withEndAction {
++			subtitleView.visibility = View.GONE
++		}.start()
++	}
++
++	/** Small notice in the corner, e.g. "downloading translation model". */
++	fun showStatus(text: String, sticky: Boolean = false)
++	{
++		removeCallbacks(hideStatusRunnable)
++		statusView.text = text
++		statusView.animate().cancel()
++		statusView.animate().alpha(1f).setDuration(200).start()
++		if(!sticky)
++			postDelayed(hideStatusRunnable, 3500)
++	}
++
++	private fun dp(v: Float) = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, v, resources.displayMetrics)
++}
+diff --git a/android/app/src/main/java/com/metallic/chiaki/translate/SubtitleTranslator.kt b/android/app/src/main/java/com/metallic/chiaki/translate/SubtitleTranslator.kt
+new file mode 100644
+index 00000000..fbe1bd72
+--- /dev/null
++++ b/android/app/src/main/java/com/metallic/chiaki/translate/SubtitleTranslator.kt
+@@ -0,0 +1,348 @@
++// SPDX-License-Identifier: LicenseRef-AGPL-3.0-only-OpenSSL
++// PS Arabic Translator — the live pipeline: grab frame → read text → translate → draw.
++
++package com.metallic.chiaki.translate
++
++import android.graphics.Bitmap
++import android.graphics.RectF
++import android.os.Handler
++import android.os.HandlerThread
++import android.os.Looper
++import android.util.Log
++import android.util.LruCache
++import android.view.PixelCopy
++import android.view.SurfaceView
++import com.google.mlkit.common.model.DownloadConditions
++import com.google.mlkit.nl.translate.TranslateLanguage
++import com.google.mlkit.nl.translate.Translation
++import com.google.mlkit.nl.translate.Translator
++import com.google.mlkit.nl.translate.TranslatorOptions
++import com.google.mlkit.vision.common.InputImage
++import com.google.mlkit.vision.text.Text
++import com.google.mlkit.vision.text.TextRecognition
++import com.google.mlkit.vision.text.TextRecognizer
++import com.google.mlkit.vision.text.latin.TextRecognizerOptions
++import java.util.concurrent.Executor
++import kotlin.math.min
++
++/**
++ * Watches the Remote Play picture and lays an Arabic translation over the game's subtitles.
++ *
++ * Everything heavy runs on one background thread; the overlay is only touched on the main thread.
++ * Text recognition and translation both run on the device (Google ML Kit), so after the language
++ * model is downloaded once nothing is sent to any server and it works offline.
++ *
++ * Lifecycle: [start] in onResume, [stop] in onPause, [release] in onDestroy.
++ */
++class SubtitleTranslator(
++	private val surfaceView: SurfaceView,
++	private val overlay: SubtitleOverlayView
++)
++{
++	companion object
++	{
++		private const val TAG = "SubtitleTranslator"
++
++		/** Frames are scaled to this width before OCR: sharp enough for subtitles, cheap enough for a TV. */
++		private const val CAPTURE_WIDTH = 1280
++		/** Empty scans in a row before the Arabic box is removed (avoids flicker during fades). */
++		private const val MISSES_BEFORE_HIDE = 3
++		/** Two reads at least this similar count as the same, settled subtitle. */
++		private const val STABLE_SIMILARITY = 0.88
++		/** A read this close to what is already on screen is OCR jitter, not new dialogue. */
++		private const val SAME_SUBTITLE_SIMILARITY = 0.80
++		private const val MODEL_RETRY_MS = 15_000L
++
++		private const val MSG_PREPARING = "جاري تجهيز الترجمة… (أول مرة فقط: تحميل حوالي 30 ميجا)"
++		private const val MSG_READY = "الترجمة جاهزة ✓"
++		private const val MSG_MODEL_FAILED = "تعذّر تحميل نموذج الترجمة، تأكد من اتصال الإنترنت. سنعيد المحاولة تلقائياً"
++	}
++
++	@Volatile private var settings = TranslationSettings()
++	@Volatile private var running = false
++	@Volatile private var modelReady = false
++	/** Bumped on every start so callbacks from a previous run are ignored. */
++	@Volatile private var generation = 0
++
++	private val mainHandler = Handler(Looper.getMainLooper())
++	private var workerThread: HandlerThread? = null
++	private var worker: Handler? = null
++	private val workerExecutor = Executor { r -> worker?.post(r) }
++
++	private val recognizer: TextRecognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
++	private var translator: Translator? = null
++	private var translatorPair: Pair<String, String>? = null
++
++	// ---- state below is only touched on the worker thread ----
++	private var busy = false
++	private var captureBitmap: Bitmap? = null
++	private var candidateKey: String? = null
++	private var shownKey: String? = null
++	private var missCount = 0
++	private val cache = LruCache<String, String>(500)
++
++	private val scanRunnable = object : Runnable
++	{
++		override fun run()
++		{
++			if(!running)
++				return
++			worker?.postDelayed(this, settings.scanIntervalMs)
++			scan()
++		}
++	}
++
++	fun updateSettings(newSettings: TranslationSettings)
++	{
++		settings = newSettings
++		mainHandler.post { overlay.applySettings(newSettings) }
++	}
++
++	fun start()
++	{
++		if(running || !settings.enabled)
++			return
++		running = true
++		generation++
++		prepareTranslator()
++
++		val thread = HandlerThread("subtitle-translator").also { it.start() }
++		workerThread = thread
++		val handler = Handler(thread.looper)
++		worker = handler
++		handler.post {
++			busy = false
++			candidateKey = null
++			shownKey = null
++			missCount = 0
++		}
++		handler.postDelayed(scanRunnable, 1000)
++	}
++
++	fun stop()
++	{
++		running = false
++		worker?.removeCallbacksAndMessages(null)
++		workerThread?.quitSafely()
++		workerThread = null
++		worker = null
++		mainHandler.post { overlay.hideSubtitle() }
++	}
++
++	fun release()
++	{
++		stop()
++		mainHandler.removeCallbacksAndMessages(null)
++		recognizer.close()
++		translator?.close()
++		translator = null
++	}
++
++	// ---------------------------------------------------------------- translator model
++
++	private fun prepareTranslator()
++	{
++		val source = TranslateLanguage.fromLanguageTag(settings.sourceLanguage) ?: TranslateLanguage.ENGLISH
++		val target = TranslateLanguage.fromLanguageTag(settings.targetLanguage) ?: TranslateLanguage.ARABIC
++		val pair = source to target
++		if(translator != null && translatorPair == pair && modelReady)
++			return
++
++		if(translatorPair != pair)
++		{
++			translator?.close()
++			val options = TranslatorOptions.Builder()
++				.setSourceLanguage(source)
++				.setTargetLanguage(target)
++				.build()
++			translator = Translation.getClient(options)
++			translatorPair = pair
++			modelReady = false
++			cache.evictAll() // LruCache is thread-safe
++		}
++		downloadModel()
++	}
++
++	private fun downloadModel()
++	{
++		val t = translator ?: return
++		overlay.showStatus(MSG_PREPARING, sticky = true)
++		t.downloadModelIfNeeded(DownloadConditions.Builder().build())
++			.addOnSuccessListener {
++				if(t !== translator)
++					return@addOnSuccessListener
++				modelReady = true
++				overlay.showStatus(MSG_READY)
++			}
++			.addOnFailureListener { e ->
++				Log.w(TAG, "Translation model download failed", e)
++				if(t !== translator)
++					return@addOnFailureListener
++				overlay.showStatus(MSG_MODEL_FAILED)
++				mainHandler.postDelayed({ if(running && !modelReady) downloadModel() }, MODEL_RETRY_MS)
++			}
++	}
++
++	// ---------------------------------------------------------------- worker thread
++
++	private fun scan()
++	{
++		if(busy)
++			return
++		val handler = worker ?: return
++		val sw = surfaceView.width
++		val sh = surfaceView.height
++		val surface = surfaceView.holder.surface
++		if(sw <= 0 || sh <= 0 || surface == null || !surface.isValid)
++			return
++
++		val cw = min(CAPTURE_WIDTH, sw)
++		val ch = (cw.toLong() * sh / sw).toInt()
++		if(ch <= 0)
++			return
++		val bitmap = captureBitmap?.takeIf { it.width == cw && it.height == ch && !it.isRecycled }
++			?: Bitmap.createBitmap(cw, ch, Bitmap.Config.ARGB_8888).also { captureBitmap = it }
++
++		busy = true
++		val gen = generation
++		try
++		{
++			PixelCopy.request(surfaceView, bitmap, { result -> onFrameCopied(result, bitmap, gen) }, handler)
++		}
++		catch(e: IllegalArgumentException)
++		{
++			// Surface went away between the check and the copy (e.g. app paused).
++			busy = false
++		}
++	}
++
++	private fun onFrameCopied(result: Int, frame: Bitmap, gen: Int)
++	{
++		if(gen != generation)
++			return
++		if(!running || result != PixelCopy.SUCCESS)
++		{
++			busy = false
++			return
++		}
++		val top = (frame.height * settings.scanRegion.topFraction).toInt().coerceIn(0, frame.height - 1)
++		val region = if(top == 0) frame else Bitmap.createBitmap(frame, 0, top, frame.width, frame.height - top)
++		val frameWidth = frame.width
++		val frameHeight = frame.height
++
++		recognizer.process(InputImage.fromBitmap(region, 0))
++			.addOnSuccessListener(workerExecutor) { text ->
++				if(gen != generation)
++					return@addOnSuccessListener
++				try
++				{
++					onTextRead(text, top, frameWidth, frameHeight)
++				}
++				finally
++				{
++					busy = false
++				}
++			}
++			.addOnFailureListener(workerExecutor) { e ->
++				Log.w(TAG, "Text recognition failed", e)
++				if(gen == generation)
++					busy = false
++			}
++	}
++
++	private fun onTextRead(text: Text, regionTop: Int, frameWidth: Int, frameHeight: Int)
++	{
++		val lines = text.textBlocks.flatMap { it.lines }.mapNotNull { line ->
++			val r = line.boundingBox ?: return@mapNotNull null
++			OcrLine(line.text, Box(r.left, r.top + regionTop, r.right, r.bottom + regionTop))
++		}
++		val block = SubtitleExtractor.extract(lines, frameWidth, frameHeight, settings.centeredOnly)
++
++		if(block == null)
++		{
++			candidateKey = null
++			missCount++
++			if(missCount >= MISSES_BEFORE_HIDE && shownKey != null)
++			{
++				shownKey = null
++				mainHandler.post { overlay.hideSubtitle() }
++			}
++			return
++		}
++		missCount = 0
++
++		val shown = shownKey
++		if(shown != null && SubtitleExtractor.similarity(block.key, shown) >= SAME_SUBTITLE_SIMILARITY)
++			return
++
++		// Wait for the same text on two reads in a row: skips half-faded frames and
++		// typewriter-style subtitles that are still being written out.
++		val candidate = candidateKey
++		candidateKey = block.key
++		if(candidate == null || SubtitleExtractor.similarity(block.key, candidate) < STABLE_SIMILARITY)
++			return
++
++		shownKey = block.key
++		val cached = cache.get(block.key)
++		if(cached != null)
++		{
++			display(cached, block.box, frameWidth)
++			return
++		}
++		translate(block, frameWidth)
++	}
++
++	private fun translate(block: SubtitleBlock, frameWidth: Int)
++	{
++		val t = translator
++		if(t == null || !modelReady)
++		{
++			shownKey = null // try again once the model is ready
++			return
++		}
++		t.translate(block.text)
++			.addOnSuccessListener(workerExecutor) { arabic ->
++				val clean = arabic.trim()
++				if(clean.isEmpty())
++					return@addOnSuccessListener
++				cache.put(block.key, clean)
++				if(shownKey == block.key)
++					display(clean, block.box, frameWidth)
++			}
++			.addOnFailureListener(workerExecutor) { e ->
++				Log.w(TAG, "Translation failed", e)
++				if(shownKey == block.key)
++					shownKey = null
++			}
++	}
++
++	// ---------------------------------------------------------------- main thread
++
++	private fun display(arabic: String, box: Box, frameWidth: Int)
++	{
++		mainHandler.post {
++			if(!running)
++				return@post
++			overlay.showSubtitle(arabic, mapToOverlay(box, frameWidth))
++		}
++	}
++
++	/** Frame pixels → overlay coordinates, following the stream view's position and zoom mode. */
++	private fun mapToOverlay(box: Box, frameWidth: Int): RectF?
++	{
++		if(surfaceView.width <= 0 || frameWidth <= 0)
++			return null
++		val scale = surfaceView.width.toFloat() / frameWidth
++		val sv = IntArray(2)
++		val ov = IntArray(2)
++		surfaceView.getLocationInWindow(sv)
++		overlay.getLocationInWindow(ov)
++		val dx = (sv[0] - ov[0]).toFloat()
++		val dy = (sv[1] - ov[1]).toFloat()
++		return RectF(
++			box.left * scale + dx,
++			box.top * scale + dy,
++			box.right * scale + dx,
++			box.bottom * scale + dy)
++	}
++}
+diff --git a/android/app/src/main/java/com/metallic/chiaki/translate/TranslationSettings.kt b/android/app/src/main/java/com/metallic/chiaki/translate/TranslationSettings.kt
+new file mode 100644
+index 00000000..03e7a788
+--- /dev/null
++++ b/android/app/src/main/java/com/metallic/chiaki/translate/TranslationSettings.kt
+@@ -0,0 +1,62 @@
++// SPDX-License-Identifier: LicenseRef-AGPL-3.0-only-OpenSSL
++// PS Arabic Translator — on-screen subtitle translation for Remote Play.
++
++package com.metallic.chiaki.translate
++
++/**
++ * User-facing options for the live subtitle translator.
++ * Kept free of Android preference classes so it can be built and tested on its own.
++ */
++data class TranslationSettings(
++	val enabled: Boolean = true,
++	/** ML Kit language tag of the game's subtitles, e.g. "en". */
++	val sourceLanguage: String = "en",
++	/** ML Kit language tag to translate into. */
++	val targetLanguage: String = "ar",
++	val scanRegion: ScanRegion = ScanRegion.BOTTOM_THIRD,
++	val placement: Placement = Placement.COVER_ORIGINAL,
++	val textSize: TextSize = TextSize.MEDIUM,
++	/** Ignore text near the left/right edges (HUD, menus) and keep centred subtitles only. */
++	val centeredOnly: Boolean = true,
++	/** How often a frame is read, in milliseconds. */
++	val scanIntervalMs: Long = 300L
++)
++{
++	enum class ScanRegion(val value: String, val topFraction: Float)
++	{
++		BOTTOM_THIRD("bottom_third", 0.62f),
++		BOTTOM_HALF("bottom_half", 0.45f),
++		FULL_SCREEN("full", 0.0f);
++
++		companion object
++		{
++			fun from(value: String?) = values().firstOrNull { it.value == value } ?: BOTTOM_THIRD
++		}
++	}
++
++	enum class Placement(val value: String)
++	{
++		/** Draw the Arabic box right on top of the original subtitle. */
++		COVER_ORIGINAL("cover"),
++		/** Always show the translation in a fixed band at the bottom of the screen. */
++		BOTTOM_BAND("bottom");
++
++		companion object
++		{
++			fun from(value: String?) = values().firstOrNull { it.value == value } ?: COVER_ORIGINAL
++		}
++	}
++
++	enum class TextSize(val value: String, val sp: Float)
++	{
++		SMALL("small", 18f),
++		MEDIUM("medium", 24f),
++		LARGE("large", 30f),
++		XLARGE("xlarge", 36f);
++
++		companion object
++		{
++			fun from(value: String?) = values().firstOrNull { it.value == value } ?: MEDIUM
++		}
++	}
++}
+diff --git a/android/app/src/main/res/drawable/ic_translate.xml b/android/app/src/main/res/drawable/ic_translate.xml
+new file mode 100644
+index 00000000..7923d16f
+--- /dev/null
++++ b/android/app/src/main/res/drawable/ic_translate.xml
+@@ -0,0 +1,9 @@
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++        android:width="24dp"
++        android:height="24dp"
++        android:viewportWidth="24.0"
++        android:viewportHeight="24.0">
++    <path
++        android:fillColor="?android:attr/textColorPrimary"
++        android:pathData="M12.87,15.07l-2.54,-2.51 0.03,-0.03c1.74,-1.94 2.98,-4.17 3.71,-6.53L17,6L17,4h-7L10,2L8,2v2L1,4v1.99h11.17C11.5,7.92 10.44,9.75 9,11.35 8.07,10.32 7.3,9.19 6.69,8h-2c0.73,1.63 1.73,3.17 2.98,4.56l-5.09,5.02L4,19l5,-5 3.11,3.11 0.76,-2.04zM18.5,10h-2L12,22h2l1.12,-3h4.75L21,22h2l-4.5,-12zM15.88,17l1.62,-4.33L19.12,17h-3.24z"/>
++</vector>
+diff --git a/android/app/src/main/res/layout/activity_regist.xml b/android/app/src/main/res/layout/activity_regist.xml
+index d9cf078b..d0ea6953 100644
+--- a/android/app/src/main/res/layout/activity_regist.xml
++++ b/android/app/src/main/res/layout/activity_regist.xml
+@@ -128,7 +128,16 @@
+                 android:layout_width="wrap_content"
+                 android:layout_height="wrap_content"
+                 android:visibility="visible"
+-                app:constraint_referenced_ids="psnAccountIdHelpTextView,psnAccountIdHelpURLTextView"/>
++                app:constraint_referenced_ids="psnAccountIdHelpTextView,psnAccountIdHelpURLTextView,psnLoginButton"/>
++
++            <com.google.android.material.button.MaterialButton
++                android:id="@+id/psnLoginButton"
++                android:layout_width="match_parent"
++                android:layout_height="wrap_content"
++                app:layout_constraintTop_toBottomOf="@id/psnAccountIdHelpURLTextView"
++                android:layout_marginTop="8dp"
++                android:text="@string/action_psn_login"
++                app:icon="@drawable/ic_psn_id"/>
+ 
+             <com.google.android.material.textfield.TextInputLayout
+                 android:id="@+id/psnIdTextInputLayout"
+@@ -136,7 +145,7 @@
+                 android:layout_height="wrap_content"
+                 android:hint="@string/hint_regist_psn_online_id"
+                 app:startIconDrawable="@drawable/ic_psn_id"
+-                app:layout_constraintTop_toBottomOf="@id/psnAccountIdHelpURLTextView"
++                app:layout_constraintTop_toBottomOf="@id/psnLoginButton"
+                 android:layout_marginTop="16dp">
+                 <com.google.android.material.textfield.TextInputEditText
+                     android:id="@+id/psnIdEditText"
+diff --git a/android/app/src/main/res/layout/activity_stream.xml b/android/app/src/main/res/layout/activity_stream.xml
+index 77a31652..9fe101fe 100644
+--- a/android/app/src/main/res/layout/activity_stream.xml
++++ b/android/app/src/main/res/layout/activity_stream.xml
+@@ -20,6 +20,14 @@
+             android:layout_height="wrap_content"/>
+     </com.metallic.chiaki.stream.AspectRatioFrameLayout>
+ 
++    <!-- Arabic subtitles drawn over the game picture -->
++    <com.metallic.chiaki.translate.SubtitleOverlayView
++        android:id="@+id/subtitleOverlay"
++        android:layout_width="match_parent"
++        android:layout_height="match_parent"
++        android:clickable="false"
++        android:focusable="false"/>
++
+     <ProgressBar
+         android:id="@+id/progressBar"
+         android:layout_width="wrap_content"
+@@ -75,6 +83,17 @@
+                 app:layout_constraintStart_toStartOf="parent"
+                 app:switchPadding="8dp" />
+ 
++            <com.google.android.material.switchmaterial.SwitchMaterial
++                android:id="@+id/translationSwitch"
++                android:layout_width="wrap_content"
++                android:layout_height="wrap_content"
++                android:layout_marginStart="380dp"
++                android:text="@string/stream_translation"
++                android:textColor="@color/stream_text"
++                app:layout_constraintBottom_toBottomOf="parent"
++                app:layout_constraintStart_toStartOf="parent"
++                app:switchPadding="8dp" />
++
+             <com.google.android.material.button.MaterialButtonToggleGroup
+                 android:id="@+id/displayModeToggle"
+                 android:layout_width="wrap_content"
+diff --git a/android/app/src/main/res/values/arrays_translation.xml b/android/app/src/main/res/values/arrays_translation.xml
+new file mode 100644
+index 00000000..118e0f25
+--- /dev/null
++++ b/android/app/src/main/res/values/arrays_translation.xml
+@@ -0,0 +1,64 @@
++<?xml version="1.0" encoding="utf-8"?>
++<resources>
++    <!-- ML Kit language tags; all use the Latin text recognizer -->
++    <string-array name="translation_source_language_entries">
++        <item>الإنجليزية</item>
++        <item>الفرنسية</item>
++        <item>الإسبانية</item>
++        <item>الألمانية</item>
++        <item>الإيطالية</item>
++        <item>البرتغالية</item>
++    </string-array>
++    <string-array name="translation_source_language_values" translatable="false">
++        <item>en</item>
++        <item>fr</item>
++        <item>es</item>
++        <item>de</item>
++        <item>it</item>
++        <item>pt</item>
++    </string-array>
++
++    <string-array name="translation_region_entries">
++        <item>الثلث السفلي من الشاشة (الأفضل لأغلب الألعاب)</item>
++        <item>النصف السفلي من الشاشة</item>
++        <item>الشاشة كاملة</item>
++    </string-array>
++    <string-array name="translation_region_values" translatable="false">
++        <item>bottom_third</item>
++        <item>bottom_half</item>
++        <item>full</item>
++    </string-array>
++
++    <string-array name="translation_placement_entries">
++        <item>فوق الترجمة الأصلية (تغطيها)</item>
++        <item>أسفل الشاشة دائماً</item>
++    </string-array>
++    <string-array name="translation_placement_values" translatable="false">
++        <item>cover</item>
++        <item>bottom</item>
++    </string-array>
++
++    <string-array name="translation_text_size_entries">
++        <item>صغير</item>
++        <item>متوسط</item>
++        <item>كبير</item>
++        <item>كبير جداً</item>
++    </string-array>
++    <string-array name="translation_text_size_values" translatable="false">
++        <item>small</item>
++        <item>medium</item>
++        <item>large</item>
++        <item>xlarge</item>
++    </string-array>
++
++    <string-array name="translation_speed_entries">
++        <item>سريع (أسرع ظهور، يحتاج تلفزيون قوي)</item>
++        <item>عادي</item>
++        <item>موفّر (للتلفزيونات الضعيفة)</item>
++    </string-array>
++    <string-array name="translation_speed_values" translatable="false">
++        <item>200</item>
++        <item>300</item>
++        <item>600</item>
++    </string-array>
++</resources>
+diff --git a/android/app/src/main/res/values/strings.xml b/android/app/src/main/res/values/strings.xml
+index 6ab2beb6..6bed0836 100644
+--- a/android/app/src/main/res/values/strings.xml
++++ b/android/app/src/main/res/values/strings.xml
+@@ -1,110 +1,110 @@
+ <resources>
+-    <string name="app_name">Chiaki</string>
+-    <string name="title_main">Chiaki 千秋</string>
+-    <string name="title_settings">Settings</string>
+-    <string name="alert_message_standby_wakeup">The Console is currently in standby mode. Do you want to send a Wakeup packet instead of trying to connect immediately?</string>
+-    <string name="alert_message_session_quit">Session has quit: %s</string>
+-    <string name="alert_message_session_create_error">Failed to create Session: %s</string>
+-    <string name="alert_message_login_pin_request">Login PIN:</string>
+-    <string name="alert_message_login_pin_request_incorrect">Entered PIN was incorrect!\nLogin PIN:</string>
+-    <string name="action_reconnect">Reconnect</string>
+-    <string name="action_wakeup">Wakeup</string>
+-    <string name="action_connect_immediately">Connect</string>
+-    <string name="action_connect_cancel_connect">Cancel</string>
+-    <string name="action_quit_session">Quit</string>
+-    <string name="action_login_pin_connect">Connect</string>
+-    <string name="action_settings">Settings</string>
+-    <string name="action_discover">Discover Consoles Automatically</string>
+-    <string name="display_host_host">Address: %s</string>
+-    <string name="display_host_id_unregistered">ID: %s</string>
+-    <string name="display_host_id_registered">ID: %s (registered)</string>
+-    <string name="display_host_app_title_id">App: %s\nTitle ID: %s</string>
+-    <string name="action_register">Register Console</string>
+-    <string name="action_add_manual">Add Console Manually</string>
+-    <string name="regist_pin_instructions_ps4_before">On the PS4, navigate to</string>
+-    <string name="regist_pin_instructions_ps4_navigation">Settings →\nRemote Play Connection Settings →\nAdd Device</string>
+-    <string name="regist_pin_instructions_ps5_before">On the PS5, navigate to</string>
+-    <string name="regist_pin_instructions_ps5_navigation">Settings →\nSystem → Remote Play →\nLink Device</string>
+-    <string name="regist_pin_instructions_after">to obtain the PIN</string>
+-    <string name="title_regist">Register Console</string>
+-    <string name="hint_regist_host">Host</string>
+-    <string name="regist_broadcast">Broadcast</string>
++    <string name="app_name">مترجم ألعاب بلايستيشن</string>
++    <string name="title_main">مترجم ألعاب بلايستيشن</string>
++    <string name="title_settings">الإعدادات</string>
++    <string name="alert_message_standby_wakeup">الجهاز في وضع السكون. تبي نشغّله أولاً بدل محاولة الاتصال مباشرة؟</string>
++    <string name="alert_message_session_quit">انتهى الاتصال: %s</string>
++    <string name="alert_message_session_create_error">تعذّر بدء الاتصال: %s</string>
++    <string name="alert_message_login_pin_request">رمز الدخول (PIN):</string>
++    <string name="alert_message_login_pin_request_incorrect">الرمز غير صحيح!\nرمز الدخول (PIN):</string>
++    <string name="action_reconnect">إعادة الاتصال</string>
++    <string name="action_wakeup">تشغيل الجهاز</string>
++    <string name="action_connect_immediately">اتصال</string>
++    <string name="action_connect_cancel_connect">إلغاء</string>
++    <string name="action_quit_session">خروج</string>
++    <string name="action_login_pin_connect">اتصال</string>
++    <string name="action_settings">الإعدادات</string>
++    <string name="action_discover">البحث عن الأجهزة تلقائياً</string>
++    <string name="display_host_host">العنوان: %s</string>
++    <string name="display_host_id_unregistered">المعرّف: %s</string>
++    <string name="display_host_id_registered">المعرّف: %s (مسجّل)</string>
++    <string name="display_host_app_title_id">اللعبة: %s\nرقم اللعبة: %s</string>
++    <string name="action_register">ربط الجهاز</string>
++    <string name="action_add_manual">إضافة جهاز يدوياً</string>
++    <string name="regist_pin_instructions_ps4_before">في جهاز PS4 روح إلى</string>
++    <string name="regist_pin_instructions_ps4_navigation">الإعدادات ←\nإعدادات اتصال التشغيل عن بُعد ←\nإضافة جهاز</string>
++    <string name="regist_pin_instructions_ps5_before">في جهاز PS5 روح إلى</string>
++    <string name="regist_pin_instructions_ps5_navigation">الإعدادات ←\nالنظام ← التشغيل عن بُعد ←\nربط جهاز</string>
++    <string name="regist_pin_instructions_after">عشان يطلع لك الرمز (PIN)</string>
++    <string name="title_regist">ربط جهاز البلايستيشن</string>
++    <string name="hint_regist_host">عنوان الجهاز (IP)</string>
++    <string name="regist_broadcast">بث على الشبكة</string>
+     <string name="regist_option_ps4_lt_7">PS4 &lt; 7.0</string>
+     <string name="regist_option_ps4_ge_7">PS4 ≥ 7.0, &lt; 8</string>
+     <string name="regist_option_ps4_ge_8">PS4 ≥ 8.0</string>
+     <string name="regist_option_ps5">PS5</string>
+-    <string name="regist_psn_account_id_help">About obtaining your Account ID, see</string>
++    <string name="regist_psn_account_id_help">تقدر تجيب معرّف الحساب تلقائياً بزر «تسجيل الدخول بحساب سوني» تحت، أو تشوف الشرح هنا:</string>
+     <string name="regist_psn_account_id_help_url">https://git.sr.ht/~thestr4ng3r/chiaki/tree/master/item/README.md#obtaining-your-psn-accountid</string>
+-    <string name="hint_regist_psn_online_id">PSN Online ID (username, case-sensitive)</string>
+-    <string name="hint_regist_psn_account_id">PSN Account ID (8 bytes, base64)</string>
+-    <string name="hint_regist_pin">PIN</string>
+-    <string name="action_regist">Register</string>
+-    <string name="entered_host_invalid">Please enter a valid host name</string>
+-    <string name="regist_psn_online_id_invalid">Please enter a valid PSN ID</string>
+-    <string name="regist_psn_account_id_invalid">Please enter a valid 8-byte Account ID in Base64</string>
+-    <string name="regist_pin_invalid">Please enter a valid %d-digit PIN</string>
+-    <string name="action_share_log">Share Log</string>
+-    <string name="action_export_settings">Export Settings</string>
+-    <string name="regist_info_success">Regist successful.</string>
+-    <string name="regist_info_failed">Regist failed.</string>
+-    <string name="alert_regist_duplicate">The console with MAC %s has already been registered. Should the previous record be overwritten?</string>
+-    <string name="action_regist_overwrite">Overwrite</string>
+-    <string name="action_regist_discard">Cancel</string>
+-    <string name="action_import_import">Import</string>
+-    <string name="action_import_cancel">Cancel</string>
+-    <string name="alert_title_import">Import</string>
+-    <string name="alert_message_import">Registered Hosts: %s\n\nManual Hosts: %s</string>
+-    <string name="alert_message_import_failed">Failed to import settings from file:\n%s</string>
+-    <string name="action_import_failed_ack">Dismiss</string>
+-    <string name="title_edit_manual">Manual Console Entry</string>
+-    <string name="action_add_manual_save">Save</string>
+-    <string name="hint_add_manual_regist_host">Registered Console</string>
+-    <string name="add_manual_regist_on_connect">Register on first Connection</string>
+-    <string name="preferences_category_title_general">General</string>
+-    <string name="preferences_category_title_stream">Stream</string>
+-    <string name="preferences_category_title_export">Export</string>
+-    <string name="preferences_registered_hosts_title">Registered Consoles</string>
+-    <string name="preferences_logs_title">Session Logs</string>
+-    <string name="preferences_logs_summary">Collected log files from previous sessions for debugging</string>
+-    <string name="preferences_export_settings_title">Export Settings</string>
+-    <string name="preferences_export_settings_summary">Warning: These resulting file can contain your secret Remote Play keys! Do not share them.</string>
+-    <string name="preferences_import_settings_title">Import Settings</string>
+-    <string name="preferences_import_settings_summary">Import Settings from JSON</string>
+-    <string name="preferences_registered_hosts_summary">Currently registered: %d</string>
+-    <string name="preferences_resolution_title">Resolution</string>
+-    <string name="preferences_fps_title">FPS</string>
+-    <string name="preferences_bitrate_title">Bitrate</string>
+-    <string name="preferences_codec_title">Codec</string>
+-    <string name="preferences_log_verbose_title">Verbose Logging</string>
+-    <string name="preferences_log_verbose_summary">Warning: This logs a LOT! Don\'t enable for regular use.</string>
++    <string name="hint_regist_psn_online_id">اسم حساب PSN (بنفس الحروف الكبيرة والصغيرة)</string>
++    <string name="hint_regist_psn_account_id">معرّف حساب PSN (Account ID)</string>
++    <string name="hint_regist_pin">الرمز (PIN)</string>
++    <string name="action_regist">ربط</string>
++    <string name="entered_host_invalid">اكتب عنوان صحيح</string>
++    <string name="regist_psn_online_id_invalid">اكتب اسم حساب PSN صحيح</string>
++    <string name="regist_psn_account_id_invalid">معرّف الحساب غير صحيح، استخدم زر تسجيل الدخول بحساب سوني</string>
++    <string name="regist_pin_invalid">اكتب رمز صحيح من %d أرقام</string>
++    <string name="action_share_log">مشاركة السجل</string>
++    <string name="action_export_settings">تصدير الإعدادات</string>
++    <string name="regist_info_success">تم الربط بنجاح ✓</string>
++    <string name="regist_info_failed">فشل الربط.</string>
++    <string name="alert_regist_duplicate">الجهاز صاحب العنوان %s مربوط من قبل. تبي تستبدل الربط القديم؟</string>
++    <string name="action_regist_overwrite">استبدال</string>
++    <string name="action_regist_discard">إلغاء</string>
++    <string name="action_import_import">استيراد</string>
++    <string name="action_import_cancel">إلغاء</string>
++    <string name="alert_title_import">استيراد</string>
++    <string name="alert_message_import">الأجهزة المربوطة: %s\n\nالأجهزة اليدوية: %s</string>
++    <string name="alert_message_import_failed">تعذّر استيراد الإعدادات من الملف:\n%s</string>
++    <string name="action_import_failed_ack">حسناً</string>
++    <string name="title_edit_manual">إضافة جهاز يدوياً</string>
++    <string name="action_add_manual_save">حفظ</string>
++    <string name="hint_add_manual_regist_host">الجهاز المربوط</string>
++    <string name="add_manual_regist_on_connect">الربط عند أول اتصال</string>
++    <string name="preferences_category_title_general">عام</string>
++    <string name="preferences_category_title_stream">البث</string>
++    <string name="preferences_category_title_export">النسخ الاحتياطي</string>
++    <string name="preferences_registered_hosts_title">الأجهزة المربوطة</string>
++    <string name="preferences_logs_title">سجلات الاتصال</string>
++    <string name="preferences_logs_summary">سجلات الجلسات السابقة لحل المشاكل</string>
++    <string name="preferences_export_settings_title">تصدير الإعدادات</string>
++    <string name="preferences_export_settings_summary">تنبيه: الملف فيه مفاتيح الربط السرية، لا تشاركه مع أحد.</string>
++    <string name="preferences_import_settings_title">استيراد الإعدادات</string>
++    <string name="preferences_import_settings_summary">استيراد الإعدادات من ملف JSON</string>
++    <string name="preferences_registered_hosts_summary">عدد الأجهزة المربوطة: %d</string>
++    <string name="preferences_resolution_title">الدقة</string>
++    <string name="preferences_fps_title">عدد الإطارات</string>
++    <string name="preferences_bitrate_title">معدل البيانات</string>
++    <string name="preferences_codec_title">نوع الترميز</string>
++    <string name="preferences_log_verbose_title">سجل مفصّل</string>
++    <string name="preferences_log_verbose_summary">تنبيه: يكتب سجلات كثيرة جداً، لا تفعّله إلا لحل مشكلة.</string>
+     <string name="preferences_resolution_title_360p">360p</string>
+     <string name="preferences_resolution_title_540p">540p</string>
+     <string name="preferences_resolution_title_720p">720p</string>
+     <string name="preferences_resolution_title_1080p">1080p</string>
+     <string name="preferences_fps_title_30">30</string>
+     <string name="preferences_fps_title_60">60</string>
+-    <string name="preferences_bitrate_auto">Auto (%d)</string>
++    <string name="preferences_bitrate_auto">تلقائي (%d)</string>
+     <string name="preferences_codec_title_h264">H264</string>
+-    <string name="preferences_codec_title_h265">H265 (PS5 only)</string>
+-    <string name="preferences_swap_cross_moon_title">Swap Cross/Moon and Box/Pyramid Buttons</string>
+-    <string name="preferences_swap_cross_moon_summary">Swap face buttons if default mapping is incorrect (e.g. for 8BitDo controllers)</string>
+-    <string name="preferences_rumble_enabled_title">Rumble</string>
+-    <string name="preferences_rumble_enabled_summary">Use phone vibration motor for rumble</string>
+-    <string name="preferences_motion_enabled_title">Motion</string>
+-    <string name="preferences_motion_enabled_summary">Use device\'s motion sensors for controller motion</string>
+-    <string name="preferences_button_haptic_enabled_title">Touch Haptics</string>
+-    <string name="preferences_button_haptic_enabled_summary">Use phone vibration motor for short haptic feedback on button touches</string>
+-    <string name="alert_message_delete_registered_host">Are you sure you want to delete the registered console %s with ID %s?</string>
+-    <string name="alert_message_delete_manual_host">Are you sure you want to delete the console entry for %s?</string>
+-    <string name="action_keep">Keep</string>
+-    <string name="action_delete">Delete</string>
+-    <string name="action_edit">Edit</string>
+-    <string name="session_logs_empty_info">No Session Logs recorded.</string>
+-    <string name="registered_hosts_empty_info">No Consoles registered.</string>
+-    <string name="display_hosts_empty_discovery_off_info">No consoles added yet.\nEnable Discovery to automatically find consoles on your local network.</string>
+-    <string name="display_hosts_empty_discovery_on_info">No consoles added or discovered.</string>
+-    <string name="stream_on_screen_controls">On-Screen Controls</string>
+-    <string name="stream_touchpad_only">Touchpad only</string>
++    <string name="preferences_codec_title_h265">H265 (لـ PS5 فقط)</string>
++    <string name="preferences_swap_cross_moon_title">تبديل أزرار ✕/○ و □/△</string>
++    <string name="preferences_swap_cross_moon_summary">فعّلها إذا كانت أزرار اليد معكوسة (مثل يد 8BitDo)</string>
++    <string name="preferences_rumble_enabled_title">الاهتزاز</string>
++    <string name="preferences_rumble_enabled_summary">استخدام اهتزاز الجهاز</string>
++    <string name="preferences_motion_enabled_title">الحركة</string>
++    <string name="preferences_motion_enabled_summary">استخدام حساسات الحركة في الجهاز</string>
++    <string name="preferences_button_haptic_enabled_title">اهتزاز اللمس</string>
++    <string name="preferences_button_haptic_enabled_summary">اهتزاز خفيف عند لمس الأزرار على الشاشة</string>
++    <string name="alert_message_delete_registered_host">متأكد تبي تحذف الجهاز المربوط %s (المعرّف %s)؟</string>
++    <string name="alert_message_delete_manual_host">متأكد تبي تحذف الجهاز %s؟</string>
++    <string name="action_keep">إبقاء</string>
++    <string name="action_delete">حذف</string>
++    <string name="action_edit">تعديل</string>
++    <string name="session_logs_empty_info">ما فيه سجلات.</string>
++    <string name="registered_hosts_empty_info">ما فيه أجهزة مربوطة.</string>
++    <string name="display_hosts_empty_discovery_off_info">ما أضفت أي جهاز للحين.\nفعّل البحث التلقائي عشان نلقى البلايستيشن في شبكة البيت.</string>
++    <string name="display_hosts_empty_discovery_on_info">ما لقينا أي جهاز. تأكد أن البلايستيشن شغّال وعلى نفس شبكة الواي فاي.</string>
++    <string name="stream_on_screen_controls">أزرار على الشاشة</string>
++    <string name="stream_touchpad_only">لوحة اللمس فقط</string>
+ 
+     <!-- Don't localize these -->
+     <string name="preferences_discovery_enabled_key">discovery_enabled</string>
+@@ -121,4 +121,29 @@
+     <string name="preferences_fps_key">stream_fps</string>
+     <string name="preferences_bitrate_key">stream_bitrate</string>
+     <string name="preferences_codec_key">stream_codec</string>
++
++    <!-- ===== Live subtitle translation (PS Arabic Translator) ===== -->
++    <string name="stream_translation">الترجمة العربية</string>
++    <string name="preferences_category_title_translation">الترجمة العربية</string>
++    <string name="preferences_translation_enabled_key" translatable="false">translation_enabled</string>
++    <string name="preferences_translation_enabled_title">ترجمة الألعاب للعربي</string>
++    <string name="preferences_translation_enabled_summary">يقرأ الترجمة الإنجليزية في اللعبة ويعرض مكانها ترجمة عربية</string>
++    <string name="preferences_translation_source_language_key" translatable="false">translation_source_language</string>
++    <string name="preferences_translation_source_language_title">لغة الترجمة في اللعبة</string>
++    <string name="preferences_translation_region_key" translatable="false">translation_region</string>
++    <string name="preferences_translation_region_title">مكان البحث عن الترجمة</string>
++    <string name="preferences_translation_placement_key" translatable="false">translation_placement</string>
++    <string name="preferences_translation_placement_title">مكان عرض الترجمة العربية</string>
++    <string name="preferences_translation_text_size_key" translatable="false">translation_text_size</string>
++    <string name="preferences_translation_text_size_title">حجم الخط</string>
++    <string name="preferences_translation_speed_key" translatable="false">translation_speed</string>
++    <string name="preferences_translation_speed_title">سرعة القراءة</string>
++    <string name="preferences_translation_centered_only_key" translatable="false">translation_centered_only</string>
++    <string name="preferences_translation_centered_only_title">تجاهل النصوص الجانبية</string>
++    <string name="preferences_translation_centered_only_summary">يترجم نصوص الحوار في الوسط فقط ويتجاهل القوائم والأرقام على الأطراف. أطفه إذا كانت ترجمة اللعبة على اليسار.</string>
++    <string name="action_psn_login">تسجيل الدخول بحساب سوني</string>
++    <string name="psn_login_title">تسجيل الدخول بحساب PlayStation</string>
++    <string name="psn_login_working">جاري جلب معرّف الحساب…</string>
++    <string name="psn_login_success">تم ربط حساب سوني ✓</string>
++    <string name="psn_login_failed">تعذّر جلب معرّف الحساب: %s</string>
+ </resources>
+diff --git a/android/app/src/main/res/xml/preferences.xml b/android/app/src/main/res/xml/preferences.xml
+index 49989db4..ec8a7fe6 100644
+--- a/android/app/src/main/res/xml/preferences.xml
++++ b/android/app/src/main/res/xml/preferences.xml
+@@ -2,6 +2,75 @@
+ <PreferenceScreen xmlns:app="http://schemas.android.com/apk/res-auto"
+     xmlns:tools="http://schemas.android.com/tools"
+     xmlns:android="http://schemas.android.com/apk/res/android">
++    <PreferenceCategory
++        app:key="category_translation"
++        app:title="@string/preferences_category_title_translation">
++        <SwitchPreference
++            app:key="@string/preferences_translation_enabled_key"
++            app:title="@string/preferences_translation_enabled_title"
++            app:summary="@string/preferences_translation_enabled_summary"
++            app:defaultValue="true"
++            app:icon="@drawable/ic_translate" />
++
++        <ListPreference
++            app:key="@string/preferences_translation_source_language_key"
++            app:title="@string/preferences_translation_source_language_title"
++            app:entries="@array/translation_source_language_entries"
++            app:entryValues="@array/translation_source_language_values"
++            app:defaultValue="en"
++            app:summary="%s"
++            app:dependency="@string/preferences_translation_enabled_key"
++            app:icon="@drawable/ic_translate" />
++
++        <ListPreference
++            app:key="@string/preferences_translation_region_key"
++            app:title="@string/preferences_translation_region_title"
++            app:entries="@array/translation_region_entries"
++            app:entryValues="@array/translation_region_values"
++            app:defaultValue="bottom_third"
++            app:summary="%s"
++            app:dependency="@string/preferences_translation_enabled_key"
++            app:icon="@drawable/ic_display_zoom" />
++
++        <ListPreference
++            app:key="@string/preferences_translation_placement_key"
++            app:title="@string/preferences_translation_placement_title"
++            app:entries="@array/translation_placement_entries"
++            app:entryValues="@array/translation_placement_values"
++            app:defaultValue="cover"
++            app:summary="%s"
++            app:dependency="@string/preferences_translation_enabled_key"
++            app:icon="@drawable/ic_display_normal" />
++
++        <ListPreference
++            app:key="@string/preferences_translation_text_size_key"
++            app:title="@string/preferences_translation_text_size_title"
++            app:entries="@array/translation_text_size_entries"
++            app:entryValues="@array/translation_text_size_values"
++            app:defaultValue="medium"
++            app:summary="%s"
++            app:dependency="@string/preferences_translation_enabled_key"
++            app:icon="@drawable/ic_resolution" />
++
++        <ListPreference
++            app:key="@string/preferences_translation_speed_key"
++            app:title="@string/preferences_translation_speed_title"
++            app:entries="@array/translation_speed_entries"
++            app:entryValues="@array/translation_speed_values"
++            app:defaultValue="300"
++            app:summary="%s"
++            app:dependency="@string/preferences_translation_enabled_key"
++            app:icon="@drawable/ic_fps" />
++
++        <SwitchPreference
++            app:key="@string/preferences_translation_centered_only_key"
++            app:title="@string/preferences_translation_centered_only_title"
++            app:summary="@string/preferences_translation_centered_only_summary"
++            app:defaultValue="true"
++            app:dependency="@string/preferences_translation_enabled_key"
++            app:icon="@drawable/ic_display_stretch" />
++    </PreferenceCategory>
++
+     <PreferenceCategory
+         app:key="category_general"
+         app:title="@string/preferences_category_title_general">
+diff --git a/android/app/src/test/java/com/metallic/chiaki/translate/SubtitleExtractorTest.kt b/android/app/src/test/java/com/metallic/chiaki/translate/SubtitleExtractorTest.kt
+new file mode 100644
+index 00000000..c28a43cc
+--- /dev/null
++++ b/android/app/src/test/java/com/metallic/chiaki/translate/SubtitleExtractorTest.kt
+@@ -0,0 +1,60 @@
++// SPDX-License-Identifier: LicenseRef-AGPL-3.0-only-OpenSSL
++
++package com.metallic.chiaki.translate
++
++import org.junit.Assert.assertEquals
++import org.junit.Assert.assertNotNull
++import org.junit.Assert.assertNull
++import org.junit.Assert.assertTrue
++import org.junit.Test
++
++class SubtitleExtractorTest
++{
++	private val w = 1280
++	private val h = 720
++
++	@Test
++	fun picksCentredDialogueAndIgnoresHud()
++	{
++		val lines = listOf(
++			OcrLine("We have to leave before the", Box(400, 600, 880, 630)),
++			OcrLine("storm reaches the village.", Box(420, 636, 860, 666)),
++			OcrLine("Quest: Find Atreus", Box(20, 480, 260, 500)),
++			OcrLine("12:45", Box(600, 450, 680, 470)))
++		val block = SubtitleExtractor.extract(lines, w, h, centeredOnly = true)
++		assertNotNull(block)
++		assertEquals("We have to leave before the storm reaches the village.", block!!.text)
++		assertEquals(Box(400, 600, 880, 666), block.box)
++	}
++
++	@Test
++	fun keepsSpeakersOnSeparateLines()
++	{
++		assertEquals("- Where are you?\n- Right here.",
++			SubtitleExtractor.joinForTranslation(listOf("- Where are you?", "- Right here.")))
++		assertEquals("something new", SubtitleExtractor.joinForTranslation(listOf("some-", "thing new")))
++	}
++
++	@Test
++	fun ocrJitterIsTheSameSubtitle()
++	{
++		val a = SubtitleExtractor.normalize("We have to leave, before the storm!")
++		val b = SubtitleExtractor.normalize("We have to Ieave before the storm")
++		val c = SubtitleExtractor.normalize("Then we go north and find the boat.")
++		assertTrue(SubtitleExtractor.similarity(a, b) > 0.88)
++		assertTrue(SubtitleExtractor.similarity(a, c) < 0.6)
++	}
++
++	@Test
++	fun cleansCommonOcrSlips()
++	{
++		assertEquals("I don't know", SubtitleExtractor.cleanLine("| don't know |"))
++	}
++
++	@Test
++	fun rejectsNoise()
++	{
++		assertNull(SubtitleExtractor.extract(listOf(OcrLine("x", Box(600, 600, 610, 630))), w, h, true))
++		assertNull(SubtitleExtractor.extract(listOf(OcrLine("tiny text here", Box(500, 600, 700, 606))), w, h, true))
++	}
++}
+diff --git a/android/gradle/libs.versions.toml b/android/gradle/libs.versions.toml
+index 2e929777..24388834 100644
+--- a/android/gradle/libs.versions.toml
++++ b/android/gradle/libs.versions.toml
+@@ -15,6 +15,8 @@ recyclerview = "1.3.2"
+ preference = "1.2.1"
+ material = "1.12.0"
+ oboe = "1.10.0"
++mlkit-text-recognition = "16.0.1"
++mlkit-translate = "17.0.3"
+ 
+ [libraries]
+ activity-ktx = { module = "androidx.activity:activity-ktx", version.ref = "activity" }
+@@ -39,6 +41,10 @@ moshi-kotlin-codegen = { module = "com.squareup.moshi:moshi-kotlin-codegen", ver
+ 
+ oboe = { module = "com.google.oboe:oboe", version.ref = "oboe" }
+ 
++# On-device OCR + translation for the Arabic subtitle overlay
++mlkit-text-recognition = { module = "com.google.mlkit:text-recognition", version.ref = "mlkit-text-recognition" }
++mlkit-translate = { module = "com.google.mlkit:translate", version.ref = "mlkit-translate" }
++
+ [plugins]
+ android-application = { id = "com.android.application", version.ref = "agp" }
+ kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }

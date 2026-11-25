@@ -1,0 +1,78 @@
+# Builds "PS Arabic Translator" (chiaki-ng Android + Arabic subtitle overlay)
+# and publishes the APK as a GitHub Release so the TV can install it with Downloader.
+name: Build TV app
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  CHIAKI_COMMIT: 43728af2e639fecb8a7af1cd68c29820a40de973
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Get chiaki-ng source and apply the translator patch
+        run: |
+          git clone https://github.com/streetpea/chiaki-ng.git src
+          cd src
+          git checkout "$CHIAKI_COMMIT"
+          git submodule update --init --recursive third-party/nanopb third-party/jerasure third-party/gf-complete third-party/curl third-party/cpp-steam-tools android/app/src/main/cpp/oboe
+          git apply --whitespace=nowarn ../translator.patch
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Install NDK and CMake
+        run: sdkmanager --install "ndk;28.2.13676358" "cmake;3.22.1" "platforms;android-35" "build-tools;35.0.0"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Python tools for nanopb
+        run: pip install protobuf grpcio-tools
+
+      - name: Use the repo's signing key (lets new versions install over old ones)
+        run: |
+          mkdir -p ~/.android
+          cp signing.keystore ~/.android/debug.keystore
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Build APK
+        working-directory: src/android
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon testDebugUnitTest assembleDebug
+
+      - name: Collect APK
+        run: cp src/android/app/build/outputs/apk/debug/app-debug.apk ps-arabic-translator.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ps-arabic-translator
+          path: ps-arabic-translator.apk
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ github.run_number }}
+          name: مترجم ألعاب بلايستيشن - نسخة ${{ github.run_number }}
+          body: |
+            رابط التحميل الثابت لبرنامج Downloader:
+            https://github.com/${{ github.repository }}/releases/latest/download/ps-arabic-translator.apk
+          files: ps-arabic-translator.apk
+          make_latest: true
