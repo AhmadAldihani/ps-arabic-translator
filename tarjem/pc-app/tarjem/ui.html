@@ -182,9 +182,22 @@
         <div class="field"><label>مكان الترجمة العربية</label>
           <select id="placement"><option value="cover">فوق الترجمة الأصلية</option><option value="bottom">أسفل الشاشة دائماً</option></select></div>
         <div class="field"><label>استدارة الحواف: <b id="radiusVal"></b></label><input id="radius" type="range" min="0" max="40" step="1"></div>
+        <div class="field"><label>لون اسم الشخصية</label><input id="speaker" type="color"></div>
         <div class="field"><label>&nbsp;</label><label><input id="bold" type="checkbox"> خط عريض</label></div>
       </div>
-      <div class="sample-wrap"><div id="sample" class="sample">لازم نطلع قبل لا توصل العاصفة للقرية.</div></div>
+      <div class="sample-wrap"><div id="sample" class="sample"><span id="sampleName">جيسون: </span>توقفي يا لوسيا، لازم نطلع قبل لا توصل العاصفة.</div></div>
+    </section>
+    <section class="card">
+      <h2><span class="num">٥</span> ضبط المكان على التلفزيون</h2>
+      <p class="hint">البرنامج يحدد مكان الترجمة الإنجليزية ويحط العربي فوقها تلقائياً. إذا شفت المربع العربي مزحوم شوي عنها:
+        <br>١) من إعدادات صورة التلفزيون خلّ حجم الصورة <b>«ملء الشاشة / Screen Fit / Just Scan / 1:1»</b>، لأن التكبير اللي يسويه التلفزيون (Overscan) يحرّك الصورة.
+        <br>٢) اضغط «عرض مربع الضبط» وعدّل الأشرطة لين يغطي المربع الترجمة الإنجليزية بالضبط. يتحفظ لحاله.</p>
+      <div class="grid2">
+        <div class="field"><label>يمين / يسار: <b id="dxVal"></b></label><input id="dx" type="range" min="-0.1" max="0.1" step="0.002"></div>
+        <div class="field"><label>فوق / تحت: <b id="dyVal"></b></label><input id="dy" type="range" min="-0.1" max="0.1" step="0.002"></div>
+        <div class="field"><label>تكبير / تصغير: <b id="zoomVal"></b></label><input id="zoom" type="range" min="0.9" max="1.1" step="0.002"></div>
+        <div class="field"><label>&nbsp;</label><div class="row" style="margin:0"><button id="btnCalib" class="primary">عرض مربع الضبط</button><button id="btnCalibReset">رجوع للأصل</button></div></div>
+      </div>
     </section>
   </div>
 </main>
@@ -215,6 +228,7 @@ function renderSample(s) {
   el.style.borderRadius = Math.round(s.radius * 0.55) + "px";
   el.style.fontFamily = s.font === "serif" ? "'Times New Roman', 'Noto Naskh Arabic', serif" : (s.font === "condensed" ? "'Arial Narrow', Tahoma, sans-serif" : "'Segoe UI', Tahoma, sans-serif");
   el.style.textShadow = (s.outline || s.bgAlpha < .5) ? "0 1px 3px #000" : "none";
+  $("sampleName").style.color = s.speaker || "#F5B841";
   $("sizeVal").textContent = s.size; $("alphaVal").textContent = Math.round(s.bgAlpha * 100) + "%"; $("radiusVal").textContent = s.radius;
 }
 
@@ -222,6 +236,7 @@ function readStyle() {
   return {
     size: +$("size").value, bgAlpha: +$("bgAlpha").value, fg: $("fg").value, bg: $("bg").value,
     font: $("font").value, placement: $("placement").value, radius: +$("radius").value, bold: $("bold").checked,
+    speaker: $("speaker").value,
   };
 }
 
@@ -229,13 +244,30 @@ function initControls(c) {
   const s = c.style;
   $("size").value = s.size; $("bgAlpha").value = s.bgAlpha; $("fg").value = s.fg; $("bg").value = s.bg;
   $("font").value = s.font; $("placement").value = s.placement; $("radius").value = s.radius; $("bold").checked = s.bold;
+  $("speaker").value = s.speaker || "#F5B841";
+  const k = c.calib || {dx: 0, dy: 0, zoom: 1};
+  $("dx").value = k.dx; $("dy").value = k.dy; $("zoom").value = k.zoom; renderCalib();
   $("lang").value = c.source_lang; $("speed").value = String(c.interval); $("centered").checked = c.centered_only;
   if (c.tv_ip) $("tvIp").value = c.tv_ip;
   setRegion(c.region);
   renderSample(s);
 }
 
-["size", "bgAlpha", "fg", "bg", "font", "placement", "radius", "bold"].forEach(id => {
+function renderCalib() {
+  const pct = v => (v > 0 ? "+" : "") + (v * 100).toFixed(1) + "%";
+  $("dxVal").textContent = pct(+$("dx").value); $("dyVal").textContent = pct(+$("dy").value);
+  $("zoomVal").textContent = (+$("zoom").value * 100).toFixed(1) + "%";
+}
+let calibTimer = null;
+["dx", "dy", "zoom"].forEach(id => $(id).addEventListener("input", () => {
+  renderCalib(); clearTimeout(calibTimer);
+  calibTimer = setTimeout(() => api("/api/config", {calib: {dx: +$("dx").value, dy: +$("dy").value, zoom: +$("zoom").value}, preview: true}), 150);
+}));
+$("btnCalib").onclick = () => api("/api/calib_show", {});
+$("btnCalibReset").onclick = () => { $("dx").value = 0; $("dy").value = 0; $("zoom").value = 1; renderCalib();
+  api("/api/config", {calib: {dx: 0, dy: 0, zoom: 1}, preview: true}); };
+
+["size", "bgAlpha", "fg", "bg", "font", "placement", "radius", "bold", "speaker"].forEach(id => {
   $(id).addEventListener("input", () => {
     const s = readStyle(); renderSample({...state.config.style, ...s});
     clearTimeout(styleTimer);
@@ -290,7 +322,7 @@ $("btnDiscover").onclick = async () => {
 };
 $("btnConnect").onclick = () => api("/api/connect", {ip: $("tvIp").value.trim()});
 $("btnTest").onclick = async () => {
-  const r = await api("/api/test", {rect: state && state.config.region});
+  const r = await api("/api/test", {});
   if (!r.ok) alert("التلفزيون مو متصل للحين.");
 };
 $("btnAdb").onclick = async () => {
@@ -309,7 +341,7 @@ function renderHistory(h) {
   el.innerHTML = h.map(it => `
     <div class="item" data-id="${it.id}">
       <div class="en">${esc(it.en)}</div>
-      <div class="ar">${esc(it.ar)}</div>
+      <div class="ar">${it.speaker ? `<b style="color:${esc(state.config.style.speaker || "#F5B841")}">${esc(it.speaker)}:</b> ` : ""}${esc(it.ar)}</div>
       <div class="meta"><span>${it.t}</span>${it.edited ? '<span class="tag">معدّلة</span>' : ""}<span class="grow"></span>
         <button data-edit="${it.id}">تعديل</button></div>
     </div>`).join("");
@@ -319,7 +351,8 @@ function renderHistory(h) {
 function startEdit(id) {
   const item = $("hist").querySelector(`[data-id="${id}"]`); if (!item) return;
   editing.add(id);
-  const ar = item.querySelector(".ar"), old = ar.textContent;
+  const ar = item.querySelector(".ar");
+  const it = state.history.find(h => h.id === id); const old = it ? it.ar : ar.textContent;
   ar.innerHTML = `<textarea>${esc(old)}</textarea><div class="row"><button class="primary">حفظ</button><button>إلغاء</button></div>`;
   const [save, cancel] = ar.querySelectorAll("button");
   save.onclick = async () => { await api("/api/edit", {id, text: ar.querySelector("textarea").value}); editing.delete(id); poll(); };

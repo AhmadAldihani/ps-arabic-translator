@@ -34,7 +34,9 @@ data class CaptionStyle(
 	val bottomMargin: Float = 0.07f,
 	/** Widest the box may get, as a fraction of screen width. */
 	val maxWidth: Float = 0.86f,
-	val outline: Boolean = true
+	val outline: Boolean = true,
+	/** Colour of the character name in "Name: line" subtitles. */
+	val speaker: Int = 0xFFF5B841.toInt()
 )
 {
 	fun merge(o: JSONObject): CaptionStyle = CaptionStyle(
@@ -48,14 +50,21 @@ data class CaptionStyle(
 		radius = o.optDouble("radius", radius.toDouble()).toFloat().coerceIn(0f, 60f),
 		bottomMargin = o.optDouble("bottomMargin", bottomMargin.toDouble()).toFloat().coerceIn(0f, 0.5f),
 		maxWidth = o.optDouble("maxWidth", maxWidth.toDouble()).toFloat().coerceIn(0.2f, 1f),
-		outline = o.optBoolean("outline", outline)
+		outline = o.optBoolean("outline", outline),
+		speaker = o.optString("speaker").let { if(it.isEmpty()) speaker else Protocol.parseColor(it) ?: speaker }
 	)
 }
+
+/** One spoken line; [speaker] is the character name, drawn in its own colour. */
+data class CapLine(val speaker: String?, val text: String)
+
+/** One subtitle block on screen and where the game shows it. */
+data class CapItem(val lines: List<CapLine>, val rect: NRect?)
 
 sealed class Msg
 {
 	data class Hello(val name: String) : Msg()
-	data class Show(val text: String, val rect: NRect?, val ttlMs: Long) : Msg()
+	data class Show(val items: List<CapItem>, val ttlMs: Long) : Msg()
 	data class Keep(val ttlMs: Long) : Msg()
 	object Clear : Msg()
 	data class Style(val patch: JSONObject) : Msg()
@@ -75,8 +84,8 @@ object Protocol
 		{
 			"hello" -> Msg.Hello(o.optString("name", "laptop").take(60))
 			"show" -> {
-				val text = o.optString("text")
-				if(text.isBlank()) Msg.Clear else Msg.Show(text.take(1000), parseRect(o), ttl)
+				val items = parseItems(o)
+				if(items.isEmpty()) Msg.Clear else Msg.Show(items, ttl)
 			}
 			"keep" -> Msg.Keep(ttl)
 			"clear" -> Msg.Clear
@@ -85,6 +94,41 @@ object Protocol
 			"test" -> Msg.Test
 			else -> null
 		}
+	}
+
+	/** New form: {"items":[{"rect":[..],"lines":[{"s":"Jason","t":"..."}]}]}; old form: {"text","rect"}. */
+	private fun parseItems(o: JSONObject): List<CapItem>
+	{
+		val arr = o.optJSONArray("items")
+		if(arr == null)
+		{
+			val text = o.optString("text")
+			return if(text.isBlank()) emptyList() else listOf(CapItem(listOf(CapLine(null, text.take(1000))), parseRect(o)))
+		}
+		val out = mutableListOf<CapItem>()
+		for(i in 0 until minOf(arr.length(), 8))
+		{
+			val it = arr.optJSONObject(i) ?: continue
+			val linesArr = it.optJSONArray("lines")
+			val lines = mutableListOf<CapLine>()
+			if(linesArr != null)
+			{
+				for(j in 0 until minOf(linesArr.length(), 8))
+				{
+					val l = linesArr.optJSONObject(j) ?: continue
+					val t = l.optString("t").trim()
+					if(t.isEmpty())
+						continue
+					val sp = l.optString("s").trim().ifEmpty { null }
+					lines.add(CapLine(sp?.take(40), t.take(500)))
+				}
+			}
+			else if(it.optString("text").isNotBlank())
+				lines.add(CapLine(null, it.optString("text").take(1000)))
+			if(lines.isNotEmpty())
+				out.add(CapItem(lines, parseRect(it)))
+		}
+		return out
 	}
 
 	private fun parseRect(o: JSONObject): NRect?

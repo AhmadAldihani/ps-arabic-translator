@@ -10,7 +10,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 from . import adb, capture
-from .config import Config, load_overrides, save_overrides
+from .config import Config, apply_calib, load_overrides, save_overrides
 from .engine import Engine
 from .translate import Translator
 from .tvlink import SERVER_PORT, TvLink, discover
@@ -51,6 +51,17 @@ class App:
     def push_style(self):
         self.tv.send({"t": "style", "style": self.cfg.data["style"]})
 
+    def calib_preview(self) -> bool:
+        """Draw boxes where the English subtitles are right now (or the search area), for alignment."""
+        rects = self.engine.current_rects()
+        if not rects:
+            x, y, w, h = self.cfg.region()
+            rects = [[x + w * 0.2, y + h * 0.55, w * 0.6, h * 0.3]]
+        calib = self.cfg.data["calib"]
+        items = [{"rect": apply_calib(r, calib), "lines": [{"t": "مربع الضبط — لازم يغطي الترجمة الإنجليزية بالضبط"}]}
+                 for r in rects]
+        return self.tv.send({"t": "show", "items": items, "ttl": 8000})
+
     def state(self) -> dict:
         s = self.engine.snapshot()
         s.update({
@@ -79,8 +90,13 @@ class App:
             self.cfg.update(body)
             if "style" in body:
                 self.push_style()
+            if "style" in body or "calib" in body:
                 self.engine.resend_current()
+            if "calib" in body and body.get("preview"):
+                self.calib_preview()
             return {"ok": True}
+        if path == "/api/calib_show":
+            return {"ok": self.calib_preview()}
         if path == "/api/start":
             self.engine.start()
             return {"ok": True}
@@ -89,9 +105,9 @@ class App:
             return {"ok": True}
         if path == "/api/test":
             self.push_style()
-            rect = body.get("rect")
-            text = body.get("text") or "هذي تجربة للترجمة العربية ✓ إذا تشوفها فوق اللعبة، كل شي تمام"
-            ok = self.tv.send({"t": "show", "text": text, "rect": rect, "ttl": 6000})
+            ok = self.tv.send({"t": "show", "ttl": 6000, "items": [
+                {"rect": None, "lines": [{"s": "جيسون", "t": "توقفي يا لوسيا!"},
+                                          {"t": "هذي تجربة للترجمة العربية ✓"}]}]})
             return {"ok": ok}
         if path == "/api/edit":
             return {"ok": self.engine.edit(int(body.get("id", 0)), str(body.get("text", "")))}

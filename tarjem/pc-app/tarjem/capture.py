@@ -169,3 +169,52 @@ def game_rect(width: int, height: int, aspect: float = 16 / 9) -> tuple[int, int
         return ((width - gw) // 2, 0, gw, height)
     gh = round(width / aspect)
     return (0, (height - gh) // 2, width, gh)
+
+
+def content_rect(img: Image.Image) -> tuple[int, int, int, int] | None:
+    """Bounding box of everything that is not black bars (x, y, w, h), or None if all dark."""
+    small = img.convert("L").resize((192, 108))
+    mask = small.point(lambda v: 255 if v > 22 else 0)
+    bbox = mask.getbbox()
+    if not bbox:
+        return None
+    sx, sy = img.width / 192, img.height / 108
+    x0, y0, x1, y1 = bbox
+    return (round(x0 * sx), round(y0 * sy), round((x1 - x0) * sx), round((y1 - y0) * sy))
+
+
+class VideoArea:
+    """Learns where the game picture is inside the Remote Play window.
+
+    Dark scenes hide the picture's edges, so the bright area is merged over many frames; it is
+    trusted once it looks like a 16:9 picture, otherwise the window is assumed to letterbox 16:9.
+    """
+
+    def __init__(self):
+        self.size = None
+        self.union = None
+
+    def update(self, img: Image.Image) -> tuple[int, int, int, int]:
+        if img.size != self.size:
+            self.size, self.union = img.size, None
+        r = content_rect(img)
+        if r:
+            if self.union is None:
+                self.union = r
+            else:
+                x0 = min(self.union[0], r[0]); y0 = min(self.union[1], r[1])
+                x1 = max(self.union[0] + self.union[2], r[0] + r[2]); y1 = max(self.union[1] + self.union[3], r[1] + r[3])
+                self.union = (x0, y0, x1 - x0, y1 - y0)
+        return self.rect()
+
+    def rect(self) -> tuple[int, int, int, int]:
+        w, h = self.size
+        fallback = game_rect(w, h)
+        u = self.union
+        if not u or u[3] == 0:
+            return fallback
+        aspect = u[2] / u[3]
+        big = u[2] * u[3] >= 0.45 * fallback[2] * fallback[3]
+        if big and 1.70 <= aspect <= 1.86:
+            return u
+        return fallback

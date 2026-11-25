@@ -103,7 +103,7 @@ class OverlayService : Service()
 			attachOverlay()
 		TvState.port = server.port
 		if(intent?.action == ACTION_TEST)
-			showCaption(TEST_TEXT, null, 6000)
+			showTest()
 		return START_STICKY
 	}
 
@@ -195,7 +195,7 @@ class OverlayService : Service()
 					"overlay" to TvState.overlayAttached,
 					"w" to dm.widthPixels, "h" to dm.heightPixels, "version" to 1)))
 			}
-			is Msg.Show -> showCaption(msg.text, msg.rect, msg.ttlMs)
+			is Msg.Show -> showItems(msg.items, msg.ttlMs)
 			is Msg.Keep -> {
 				main.removeCallbacks(hideRunnable)
 				main.postDelayed(hideRunnable, msg.ttlMs)
@@ -210,17 +210,21 @@ class OverlayService : Service()
 				client.send(Protocol.reply("style_ok"))
 			}
 			Msg.Ping -> client.send(Protocol.reply("pong", mapOf("overlay" to TvState.overlayAttached)))
-			Msg.Test -> showCaption(TEST_TEXT, null, 6000)
+			Msg.Test -> showTest()
 		}
 	}
 
-	private fun showCaption(text: String, rect: NRect?, ttl: Long)
+	private fun showTest() = showItems(listOf(
+		CapItem(listOf(CapLine("جيسون", "توقفي يا لوسيا!")), NRect(0.3f, 0.70f, 0.4f, 0.05f)),
+		CapItem(listOf(CapLine(null, TEST_TEXT)), NRect(0.25f, 0.80f, 0.5f, 0.09f))), 6000)
+
+	private fun showItems(items: List<CapItem>, ttl: Long)
 	{
 		if(layer == null)
 			attachOverlay()
 		val l = layer ?: return
-		l.show(text, rect)
-		TvState.lastCaption = text
+		l.show(items)
+		TvState.lastCaption = items.joinToString(" | ") { it.lines.joinToString(" ") { ln -> (ln.speaker?.let { s -> "$s: " } ?: "") + ln.text } }
 		TvState.lastCaptionAt = System.currentTimeMillis()
 		main.removeCallbacks(hideRunnable)
 		main.postDelayed(hideRunnable, ttl)

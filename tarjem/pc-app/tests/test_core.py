@@ -118,6 +118,7 @@ def test_engine_flow(tmp_path, monkeypatch):
     monkeypatch.setattr(capture, "capture_window", lambda h: frame)
 
     script = {"lines": [Line("Get in the car, now!", Box(500, 250, 780, 290))]}
+    monkeypatch.setattr(capture.VideoArea, "update", lambda self, img: (0, 0, img.width, img.height))
 
     class FakeOcr:
         def read(self, img):
@@ -131,8 +132,8 @@ def test_engine_flow(tmp_path, monkeypatch):
     while "show" not in tv.types() and time.time() < deadline:
         time.sleep(0.05)
     shows = [m for m in tv.msgs if m["t"] == "show"]
-    assert shows and shows[0]["text"] == "اركب السيارة، الحين!"
-    x, y, w, h = shows[0]["rect"]
+    assert shows and shows[0]["items"][0]["lines"][0]["t"] == "اركب السيارة، الحين!"
+    x, y, w, h = shows[0]["items"][0]["rect"]
     assert abs(x - 500 / 1280) < 0.01 and abs(y - (360 + 250) / 720) < 0.01
     assert abs(w - 280 / 1280) < 0.01 and abs(h - 40 / 720) < 0.01
     assert eng.snapshot()["history"][0]["ar"] == "اركب السيارة، الحين!"
@@ -148,5 +149,69 @@ def test_engine_flow(tmp_path, monkeypatch):
     item = eng.snapshot()["history"][0]
     assert eng.edit(item["id"], "اركب السيارة بسرعة!")
     assert tr.translate("Get in the car, now!") == "اركب السيارة بسرعة!"
+    assert eng.snapshot()["history"][0]["ar"] == "اركب السيارة بسرعة!"
     eng.stop()
     link.close()
+
+
+# ---------------------------------------------------------------- speakers, stacking, calibration
+
+def test_speakers_and_multiple_blocks():
+    from tarjem.extract import extract_all, split_speaker
+    assert split_speaker("JASON: Stop it, Lucia!") == ("JASON", "Stop it, Lucia!")
+    assert split_speaker("Mr. Hale: Sit down.") == ("Mr. Hale", "Sit down.")
+    assert split_speaker("It's 10:30 already") == (None, "It's 10:30 already")
+    assert split_speaker("we need: guns") == (None, "we need: guns")
+    lines = [
+        Line("Lucia: Where were you last", Box(420, 520, 860, 550)),
+        Line("night?", Box(600, 556, 680, 586)),
+        Line("Jason: Working.", Box(520, 592, 760, 622)),
+        Line("Cal: You two again?", Box(480, 700, 800, 730)),   # far below: separate block
+    ]
+    subs = extract_all(lines, 1280, 720)
+    assert len(subs) == 2
+    assert subs[0].utterances == [("Lucia", "Where were you last night?"), ("Jason", "Working.")]
+    assert subs[1].utterances == [("Cal", "You two again?")]
+
+
+def test_engine_sends_speakers(tmp_path, monkeypatch):
+    tv = FakeTv()
+    link = TvLink("pc")
+    link.set_target("127.0.0.1", tv.port)
+    cfg = Config(tmp_path / "c.json")
+    cfg.update({"region": [0.0, 0.5, 1.0, 0.5], "interval": 0.15, "calib": {"dy": 0.02}})
+    frame = Image.new("RGB", (1280, 720))
+    monkeypatch.setattr(capture, "find_window", lambda title: 1)
+    monkeypatch.setattr(capture, "is_minimized", lambda h: False)
+    monkeypatch.setattr(capture, "capture_window", lambda h: frame)
+    monkeypatch.setattr(capture.VideoArea, "update", lambda self, img: (0, 0, img.width, img.height))
+
+    class FakeOcr:
+        def read(self, img):
+            return [Line("JASON: Stop it, Lucia.", Box(450, 250, 830, 290))]
+
+    names = {"JASON": "جيسون", "Stop it, Lucia.": "توقفي يا لوسيا."}
+    eng = Engine(cfg, link, Translator(backend=lambda t, s, d: names[t]), lambda lang: FakeOcr())
+    eng.start()
+    deadline = time.time() + 5
+    while "show" not in tv.types() and time.time() < deadline:
+        time.sleep(0.05)
+    eng.stop()
+    item = [m for m in tv.msgs if m["t"] == "show"][0]["items"][0]
+    assert item["lines"] == [{"s": "جيسون", "t": "توقفي يا لوسيا."}]
+    assert abs(item["rect"][1] - ((360 + 250) / 720 + 0.02)) < 0.002   # calibration applied
+    link.close()
+
+
+def test_calibration_and_video_area():
+    from tarjem.config import apply_calib
+    assert apply_calib([0.25, 0.8, 0.5, 0.1], {"dx": 0, "dy": 0, "zoom": 1}) == [0.25, 0.8, 0.5, 0.1]
+    assert apply_calib([0.25, 0.8, 0.5, 0.1], {"dx": 0, "dy": 0, "zoom": 1.1}) == [0.225, 0.83, 0.55, 0.11]
+    # A 16:9 picture inside a taller window with a toolbar strip: learned from the bright area.
+    img = Image.new("RGB", (1280, 800))
+    img.paste((90, 120, 60), (0, 50, 1280, 770))
+    va = capture.VideoArea()
+    x, y, w, h = va.update(img)
+    assert abs(y - 50) <= 8 and abs(h - 720) <= 10 and w >= 1270
+    # A dark frame alone falls back to the assumed letterbox.
+    assert capture.VideoArea().update(Image.new("RGB", (1280, 800))) == capture.game_rect(1280, 800)

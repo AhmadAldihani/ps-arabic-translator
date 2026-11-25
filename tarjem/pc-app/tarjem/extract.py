@@ -14,6 +14,9 @@ _SPACES = re.compile(r"\s+")
 _KEY_STRIP = re.compile(r"[^\w ]", re.UNICODE)
 _LEADING_PIPE = re.compile(r"^\|(?=\s+[^\W\d_])")
 _INNER_PIPE = re.compile(r"(?<=\s)\|(?=\s+[^\W\d_])")
+# "JASON: Stop it, Lucia" / "Lucia: ..." / "Mr. Hale: ..."  (1-3 capitalised words, then a colon)
+_SPEAKER = re.compile(r"^((?:[A-Z][\w'’.\-]*)(?:\s+[A-Z0-9][\w'’.\-]*){0,2})\s*[:：]\s+(\S.*)$")
+_DASH = re.compile(r"^[-–—]\s*")
 
 
 @dataclass(frozen=True)
@@ -51,6 +54,21 @@ class Subtitle:
     key: str    # normalised, for "same subtitle?" checks
     box: Box    # union of its lines, in the same pixels as the input
 
+    @property
+    def utterances(self) -> list[tuple[str | None, str]]:
+        """[(speaker or None, spoken text)], one per speaker line."""
+        return [split_speaker(_DASH.sub("", l)) for l in self.text.split("\n") if l.strip()]
+
+
+def split_speaker(line: str) -> tuple[str | None, str]:
+    m = _SPEAKER.match(line.strip())
+    if not m:
+        return None, line.strip()
+    name, body = m.group(1).strip(), m.group(2).strip()
+    if len(name) < 2 or name.isdigit():
+        return None, line.strip()
+    return name, body
+
 
 def clean_line(raw: str) -> str:
     s = raw.replace(" ", " ").strip()
@@ -85,7 +103,7 @@ def join_for_translation(lines: list[str]) -> str:
     for line in lines:
         if not out:
             out = line
-        elif line[:1] in "-–—":
+        elif line[:1] in "-–—" or _SPEAKER.match(line):
             out += "\n" + line
         elif out.endswith("-") and not out.endswith(" -"):
             out = out[:-1] + line
@@ -107,6 +125,44 @@ def useful(text: str, box: Box, width: float, height: float, centered_only: bool
         if c < 0.25 or c > 0.75:
             return False
     return True
+
+
+def extract_all(raw: list[Line], width: float, height: float, centered_only: bool = True,
+                min_letters: int = 4) -> list[Subtitle]:
+    """Every subtitle block in the area (top to bottom), e.g. two speakers shown at once."""
+    groups = _groups(raw, width, height, centered_only)
+    out = []
+    for g in groups:
+        if sum(len(_LETTER.findall(l.text)) for l in g) < min_letters:
+            continue
+        sub = _to_subtitle(g)
+        if sub:
+            out.append(sub)
+    return out
+
+
+def _to_subtitle(g: list[Line]) -> Subtitle | None:
+    text = join_for_translation([l.text for l in g])
+    key = normalize(text)
+    if not key:
+        return None
+    box = g[0].box
+    for l in g[1:]:
+        box = box.union(l.box)
+    return Subtitle(text, key, box)
+
+
+def _groups(raw: list[Line], width: float, height: float, centered_only: bool) -> list[list[Line]]:
+    lines = [Line(clean_line(l.text), l.box) for l in raw]
+    lines = [l for l in lines if useful(l.text, l.box, width, height, centered_only)]
+    lines.sort(key=lambda l: l.box.top)
+    groups: list[list[Line]] = []
+    for line in lines:
+        if groups and _belongs(groups[-1], line, width):
+            groups[-1].append(line)
+        else:
+            groups.append([line])
+    return groups
 
 
 def extract(raw: list[Line], width: float, height: float, centered_only: bool = True) -> Subtitle | None:

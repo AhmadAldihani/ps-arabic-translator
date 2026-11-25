@@ -14,10 +14,12 @@ DEFAULTS = {
     "interval": 0.3,
     "source_lang": "en",
     "centered_only": True,
+    # Fine alignment of the Arabic box with the TV picture (TV overscan etc.).
+    "calib": {"dx": 0.0, "dy": 0.0, "zoom": 1.0},
     "style": {
         "size": 34, "fg": "#FFFFFF", "bg": "#101018", "bgAlpha": 0.88, "font": "sans",
         "bold": True, "placement": "cover", "radius": 14, "bottomMargin": 0.07, "maxWidth": 0.86,
-        "outline": True,
+        "outline": True, "speaker": "#F5B841",
     },
 }
 
@@ -45,7 +47,12 @@ class Config:
             for k, v in patch.items():
                 if k not in DEFAULTS:
                     continue
-                if k == "style" and isinstance(v, dict):
+                if k == "calib" and isinstance(v, dict):
+                    c = self.data["calib"]
+                    c["dx"] = min(max(float(v.get("dx", c["dx"])), -0.2), 0.2)
+                    c["dy"] = min(max(float(v.get("dy", c["dy"])), -0.2), 0.2)
+                    c["zoom"] = min(max(float(v.get("zoom", c["zoom"])), 0.8), 1.2)
+                elif k == "style" and isinstance(v, dict):
                     self.data["style"].update({sk: sv for sk, sv in v.items() if sk in DEFAULTS["style"]})
                 elif k == "region":
                     if isinstance(v, (list, tuple)) and len(v) == 4:
@@ -74,3 +81,10 @@ def load_overrides() -> dict[str, str]:
 
 def save_overrides(d: dict[str, str]):
     (data_dir() / "corrections.json").write_text(json.dumps(d, ensure_ascii=False, indent=2), "utf-8")
+
+
+def apply_calib(rect: list[float], calib: dict) -> list[float]:
+    """Game-picture fractions -> TV screen fractions (zoom about the centre, then shift)."""
+    z, dx, dy = float(calib.get("zoom", 1)), float(calib.get("dx", 0)), float(calib.get("dy", 0))
+    x, y, w, h = rect
+    return [round(0.5 + (x - 0.5) * z + dx, 4), round(0.5 + (y - 0.5) * z + dy, 4), round(w * z, 4), round(h * z, 4)]
