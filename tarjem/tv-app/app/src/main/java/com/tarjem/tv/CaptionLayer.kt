@@ -227,9 +227,17 @@ class CaptionLayer(context: Context) : FrameLayout(context)
 		val margin = (w * 0.02f).roundToInt()
 		val pad = h * 0.006f
 		val wants = ArrayList<StackLayout.Want>()
+		val subIdx = ArrayList<Int>()
 
 		items.forEachIndexed { i, item ->
 			val tv = box(i)
+			if(item.kind == "phone" && item.rect != null)
+			{
+				placePhone(tv, item, item.rect, w, h)
+				return@forEachIndexed
+			}
+			tv.gravity = Gravity.CENTER
+			subIdx.add(i)
 			val textPx = if(style.autoSize && item.lineHeight > 0f)
 				StackLayout.autoTextSize(item.lineHeight * h, style.sizeScale)
 			else
@@ -253,11 +261,27 @@ class CaptionLayer(context: Context) : FrameLayout(context)
 			// Always cover the English lines completely.
 			tv.minHeight = if(!band && r != null) (r.h * h + pad * 2 + style.padY * s * 2).roundToInt() else 0
 			tv.measure(MeasureSpec.makeMeasureSpec(boxW, MeasureSpec.EXACTLY), MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED))
-			// Text too wide for the English width? Let the box grow (up to the limit) rather than wrap a lot.
-			if(!band && tv.lineCount > (item.lines.size + 1) && boxW < maxW)
+			// Fit the Arabic into the English's shape: as many lines as the English, a little wider at most,
+			// then slightly smaller letters, so the box sits on the English like the game's own subtitle.
+			if(!band && r != null)
 			{
-				boxW = min(maxW, (boxW * 1.35f).roundToInt())
-				tv.measure(MeasureSpec.makeMeasureSpec(boxW, MeasureSpec.EXACTLY), MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED))
+				val englishLines = max(item.lines.size, if(item.lineHeight > 0f) (r.h / item.lineHeight).roundToInt() else 1)
+				val widest = min(maxW, (boxW * 1.35f).roundToInt())
+				var px = textPx
+				var guard = 0
+				while(tv.lineCount > englishLines && guard++ < 12)
+				{
+					if(boxW < widest)
+						boxW = min(widest, (boxW * 1.12f).roundToInt())
+					else if(px > textPx * 0.8f)
+					{
+						px *= 0.94f
+						tv.setTextSize(TypedValue.COMPLEX_UNIT_PX, px)
+					}
+					else
+						break
+					tv.measure(MeasureSpec.makeMeasureSpec(boxW, MeasureSpec.EXACTLY), MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED))
+				}
 			}
 			val left: Int
 			val bottom: Int
@@ -265,8 +289,9 @@ class CaptionLayer(context: Context) : FrameLayout(context)
 			{
 				!band && r != null -> {
 					left = (r.centerX * w - boxW / 2f).roundToInt().coerceIn(margin, max(margin, w - margin - boxW))
-					// The box's bottom sits on the English block's bottom; taller Arabic grows upwards.
-					bottom = min(h, (r.bottom * h + pad + style.padY * s).roundToInt())
+					// Centred on the English block both ways; a taller Arabic box grows evenly up and down.
+					val centreY = (r.y + r.h / 2f) * h
+					bottom = min(h, (centreY + tv.measuredHeight / 2f).roundToInt())
 				}
 				style.placement == "top" -> {
 					left = (w - boxW) / 2
@@ -281,8 +306,8 @@ class CaptionLayer(context: Context) : FrameLayout(context)
 		}
 
 		val placed = StackLayout.place(wants, h, (h * 0.006f).roundToInt())
-		placed.forEachIndexed { i, p ->
-			val tv = boxes[i]
+		placed.forEachIndexed { k, p ->
+			val tv = boxes[subIdx[k]]
 			val lp = tv.layoutParams as LayoutParams
 			lp.width = p.width
 			lp.height = LayoutParams.WRAP_CONTENT
@@ -304,6 +329,51 @@ class CaptionLayer(context: Context) : FrameLayout(context)
 		}
 		for(i in items.size until boxes.size)
 			hideBox(boxes[i])
+	}
+
+	/** Phone text: exactly over the English, in the phone's own colours, so it looks part of the game. */
+	private fun placePhone(tv: OutlinedTextView, item: CapItem, r: NRect, w: Int, h: Int)
+	{
+		val lineH = if(item.lineHeight > 0f) item.lineHeight * h else r.h * h
+		val lines = max(1, (r.h * h / lineH).roundToInt())
+		val padX = (lineH * 0.25f).roundToInt()
+		val boxW = (r.w * w).roundToInt() + padX * 2
+		val boxH = (r.h * h + lineH * 0.3f).roundToInt()
+		tv.setTextColor(item.fg ?: Color.WHITE)
+		tv.typeface = Fonts.get(context, style.font, false)
+		tv.setShadowLayer(0f, 0f, 0f, 0)
+		tv.outlineWidth = 0f
+		tv.background = GradientDrawable().apply {
+			cornerRadius = lineH * 0.18f
+			setColor(item.bg ?: Color.BLACK)
+		}
+		tv.setPadding(padX, 0, padX, 0)
+		tv.gravity = Gravity.CENTER_VERTICAL or Gravity.START
+		tv.minHeight = boxH
+		tv.text = item.lines.joinToString(" ") { it.text }
+		var px = lineH * 0.74f
+		if(android.os.Build.VERSION.SDK_INT >= 28)
+			tv.lineHeight = (lineH * 0.98f).roundToInt()
+		var guard = 0
+		while(true)
+		{
+			tv.setTextSize(TypedValue.COMPLEX_UNIT_PX, px)
+			tv.measure(MeasureSpec.makeMeasureSpec(boxW, MeasureSpec.EXACTLY), MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED))
+			if(tv.lineCount <= lines || px < lineH * 0.45f || guard++ > 14)
+				break
+			px *= 0.93f
+		}
+		val lp = tv.layoutParams as LayoutParams
+		lp.width = boxW
+		lp.height = LayoutParams.WRAP_CONTENT
+		lp.gravity = Gravity.TOP or Gravity.LEFT
+		lp.leftMargin = (r.x * w).roundToInt() - padX
+		lp.rightMargin = 0
+		lp.topMargin = ((r.y + r.h / 2f) * h - tv.measuredHeight / 2f).roundToInt()
+		tv.layoutParams = lp
+		tv.animate().cancel()
+		tv.alpha = 1f  // no fade: phone text must look fixed, not "popping"
+		tv.visibility = View.VISIBLE
 	}
 
 	private fun hideBox(tv: TextView)
