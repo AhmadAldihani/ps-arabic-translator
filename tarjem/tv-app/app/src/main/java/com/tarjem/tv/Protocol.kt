@@ -86,7 +86,11 @@ data class CaptionStyle(
 data class CapLine(val speaker: String?, val text: String)
 
 /** One subtitle block on screen, where the game shows it, and one English line's height (screen fraction). */
-data class CapItem(val lines: List<CapLine>, val rect: NRect?, val lineHeight: Float = 0f)
+data class CapItem(
+	val lines: List<CapLine>, val rect: NRect?, val lineHeight: Float = 0f,
+	/** "phone" = text on the in-game phone: drawn exactly over it in the phone's own colours. */
+	val kind: String = "sub", val bg: Int? = null, val fg: Int? = null,
+)
 
 sealed class Msg
 {
@@ -135,7 +139,7 @@ object Protocol
 			return if(text.isBlank()) emptyList() else listOf(CapItem(listOf(CapLine(null, text.take(1000))), parseRect(o)))
 		}
 		val out = mutableListOf<CapItem>()
-		for(i in 0 until minOf(arr.length(), 8))
+		for(i in 0 until minOf(arr.length(), 24))
 		{
 			val it = arr.optJSONObject(i) ?: continue
 			val linesArr = it.optJSONArray("lines")
@@ -155,7 +159,8 @@ object Protocol
 			else if(it.optString("text").isNotBlank())
 				lines.add(CapLine(null, it.optString("text").take(1000)))
 			if(lines.isNotEmpty())
-				out.add(CapItem(lines, parseRect(it), it.optDouble("lh", 0.0).toFloat().let { h -> if(h.isNaN()) 0f else h.coerceIn(0f, 0.3f) }))
+				out.add(CapItem(lines, parseRect(it), it.optDouble("lh", 0.0).toFloat().let { h -> if(h.isNaN()) 0f else h.coerceIn(0f, 0.3f) },
+					kind = it.optString("kind", "sub"), bg = parseColor(it.optString("bg")), fg = parseColor(it.optString("fg"))))
 		}
 		return out
 	}
