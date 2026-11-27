@@ -94,3 +94,17 @@ class StyleV2Test
 		assertEquals(34.56f, StackLayout.autoTextSize(43.2f, 1f), 0.01f)
 	}
 }
+
+class PhoneItemsTest
+{
+	@Test
+	fun parsesPhoneItems()
+	{
+		val m = Protocol.parse("""{"t":"show","items":[{"kind":"phone","bg":"#2a2a2a","fg":"#ffffff","rect":[0.7,0.5,0.2,0.03],"lh":0.03,"lines":[{"t":"وين أنت؟"}]}]}""") as Msg.Show
+		val it = m.items[0]
+		org.junit.Assert.assertEquals("phone", it.kind)
+		org.junit.Assert.assertEquals(0xFF2A2A2A.toInt(), it.bg)
+		org.junit.Assert.assertEquals(0xFFFFFFFF.toInt(), it.fg)
+		org.junit.Assert.assertEquals("sub", (Protocol.parse("""{"t":"show","items":[{"lines":[{"t":"x"}]}]}""") as Msg.Show).items[0].kind)
+	}
+}
